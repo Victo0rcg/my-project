@@ -35,10 +35,6 @@ de cuatro componentes principales:
 | Control de acceso | Seguridad basada en roles (RBAC) |
 | Prevención de interbloqueos | Algoritmo del Banquero (ítem adicional) |
 
-**Lenguaje:** Python 3.10+  
-**Duración:** 4 semanas  
-**Equipo:** 3 integrantes
-
 ---
 
 ## 🎯 Objetivos
@@ -61,8 +57,6 @@ fundamentales de los sistemas operativos.
   asignado a cada usuario.
 - Implementar el **Algoritmo del Banquero** para prevención de interbloqueos en
   transferencias multi-cuenta.
-- Producir documentación técnica que evidencie la comprensión de los conceptos
-  aplicados en cada componente.
 
 ---
 
@@ -123,15 +117,6 @@ la asignación no genere interbloqueo.
 
 ## ⚙️ Especificaciones técnicas
 
-### Entorno de desarrollo
-
-| Herramienta | Versión recomendada | Uso |
-|---|---|---|
-| Python | 3.10 o superior | Lenguaje principal |
-| Git | Última estable | Control de versiones |
-| VS Code | Última estable | Editor de código |
-| pytest | Última estable | Pruebas unitarias |
-
 ### Librerías utilizadas
 
 | Librería | Tipo | Uso |
@@ -148,16 +133,6 @@ la asignación no genere interbloqueo.
 
 > **Instalación:** `pip install pytest` (única dependencia externa)
 
-### Equivalencias conceptuales C → Python
-
-| Concepto de SO | C (POSIX) | Python |
-|---|---|---|
-| Mutex | `pthread_mutex_t` | `threading.Lock` |
-| Semáforo | `sem_t` | `threading.Semaphore` |
-| Variable de condición | `pthread_cond_t` | `threading.Condition` |
-| Hilo | `pthread_t` | `threading.Thread` |
-| Buffer compartido | Array + mutex manual | `queue.Queue` |
-| Sección crítica | `pthread_mutex_lock/unlock` | `with lock:` |
 
 > **Nota sobre el GIL:** El Global Interpreter Lock de CPython limita el paralelismo
 > real sobre CPU, pero no elimina las condiciones de carrera sobre estructuras de datos
@@ -374,14 +349,14 @@ El archivo `logs/transactions.log` quedará con las entradas ordenadas según SC
 
 | Nombre | GitHub | Módulo |
 |---|---|---|
-| Integrante 1 | @usuario1 | Motor de cuentas (`core/`) |
-| Integrante 2 | @usuario2 | Planificador SCAN (`scheduling/`) |
-| Integrante 3 | @usuario3 | RBAC y Banquero (`security/`, `concurrency/`) |
+| Integrante 1 | Victor Correa | Motor de cuentas (`core/`) |
+| Integrante 2 | Ivanna Ramirez | Planificador SCAN (`scheduling/`) |
+| Integrante 3 | Santiago Jaramillo | RBAC y Banquero (`security/`, `concurrency/`) |
 
 **Asignatura:** Sistemas Operativos  
-**Institución:** [Nombre de la universidad]  
-**Docente:** [Nombre del docente]  
-**Período:** 2026
+**Institución:** Universidad Tecnológica de Pereira  
+**Docente:** Juan Andrés Garcia Moreno
+**Período:** 2026-1
 
 ---
 
