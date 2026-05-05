@@ -333,7 +333,7 @@ pytest tests/ -v
 ```
 
 ### Salida esperada
-
+<pre>
 Al ejecutar `main.py` se mostrará en consola el estado en tiempo real:
 [HILO-1] Transacción T001 | DEPOSIT     | Cuenta A001 | +$500.00  | ✓ Autorizado (CAJERO)
 [HILO-2] Transacción T002 | TRANSFER    | A001 → A002 | $200.00   | ✓ Autorizado (ADMIN)
@@ -344,7 +344,7 @@ Al ejecutar `main.py` se mostrará en consola el estado en tiempo real:
 [BANQUERO] Solicitud T005 evaluada → Estado INSEGURO ✗ — operación pospuesta
 
 El archivo `logs/transactions.log` quedará con las entradas ordenadas según SCAN.
-
+</pre>
 ---
 
 ## 👥 Equipo
