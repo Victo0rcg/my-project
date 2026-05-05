@@ -143,7 +143,7 @@ la asignación no genere interbloqueo.
 
 ## 🏗️ Arquitectura del sistema
 
-### Estructura de directorios
+<pre>
 banco-transacciones-so/
 │
 ├── main.py                        # Punto de entrada y orquestador
@@ -151,32 +151,34 @@ banco-transacciones-so/
 ├── README.md
 │
 ├── core/                          # Módulo 1: Motor de cuentas
-│   ├── init.py
+│   ├── __init__.py
 │   ├── account.py                 # Clase Account con mutex propio
 │   ├── transaction.py             # Modelo de datos Transaction
-│   └── transaction_engine.py     # Motor productor-consumidor
+│   └── transaction_engine.py      # Motor productor-consumidor
 │
 ├── scheduling/                    # Módulo 2: Planificador SCAN
-│   ├── init.py
-│   └── scan_scheduler.py         # Hilo consumidor con lógica SCAN
+│   ├── __init__.py
+│   └── scan_scheduler.py          # Hilo consumidor con lógica SCAN
 │
 ├── security/                      # Módulo 3: Control de acceso
-│   ├── init.py
+│   ├── __init__.py
 │   ├── roles.py                   # Enum de roles y permisos
-│   └── rbac_policy.py            # Interceptor de operaciones
+│   └── rbac_policy.py             # Interceptor de operaciones
 │
 ├── concurrency/                   # Módulo 4: Algoritmo del Banquero
-│   ├── init.py
-│   └── bankers_guard.py          # Verificación de estado seguro
+│   ├── __init__.py
+│   └── bankers_guard.py           # Verificación de estado seguro
 │
 ├── logs/
-│   └── transactions.log          # Generado en ejecución
+│   └── transactions.log           # Generado en ejecución
 │
 └── tests/
-├── init.py
-├── test_account.py
-├── test_scan.py
-└── test_rbac.py
+    ├── __init__.py
+    ├── test_account.py
+    ├── test_scan.py
+    └── test_rbac.py
+</pre>
+
 
 ### Descripción de módulos
 
@@ -246,7 +248,7 @@ banco-transacciones-so/
 ---
 
 ## 🔀 Flujo de trabajo con Git
-
+<pre>
 ### Ramas del proyecto
 main                        ← siempre funcional, solo recibe Pull Requests aprobados
 │
@@ -255,7 +257,7 @@ main                        ← siempre funcional, solo recibe Pull Requests apr
 ├── feature/modulo-rbac     ← Integrante 3
 ├── feature/modulo-banquero ← Integrante 3
 └── feature/integracion     ← Todos (semana 3)
-
+</pre>
 ### Ciclo de trabajo diario
 
 ```bash
