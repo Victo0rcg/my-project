@@ -6,10 +6,13 @@ with thread-safe queue management and semaphore-based concurrency control.
 
 import threading
 import queue
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+
+if TYPE_CHECKING:
+    from .account import Account
 
 
 class TransactionType(Enum):
