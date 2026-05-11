@@ -133,12 +133,6 @@ la asignación no genere interbloqueo.
 
 > **Instalación:** `pip install pytest` (única dependencia externa)
 
-
-> **Nota sobre el GIL:** El Global Interpreter Lock de CPython limita el paralelismo
-> real sobre CPU, pero no elimina las condiciones de carrera sobre estructuras de datos
-> compartidas. Los mecanismos de sincronización son necesarios y conceptualmente
-> equivalentes a sus contrapartes POSIX.
-
 ---
 
 ## 🏗️ Arquitectura del sistema
