@@ -4,7 +4,6 @@ Implements thread-safe bank accounts with mutex synchronization.
 """
 
 import threading
-from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -119,26 +118,7 @@ class Account:
         with self._lock:
             return self.balance
     
-    def transfer_out(self, amount: float, destination_id: str) -> bool:
-        """
-        Prepare funds for transfer (first phase of multi-account transaction).
         
-        Acquires the mutex and checks if sufficient funds exist.
-        The actual balance modification happens after both accounts are locked.
-        
-        Args:
-            amount (float): Amount to transfer
-            destination_id (str): Target account ID
-            
-        Returns:
-            bool: True if funds are available
-        """
-        if amount <= 0:
-            raise ValueError(f"Transfer amount must be positive, got {amount}")
-        
-        with self._lock:
-            return self.balance >= amount
-    
     def transfer_internal(self, amount: float, source_id: str, 
                          description: str = "Transfer") -> bool:
         """
@@ -168,6 +148,24 @@ class Account:
         })
         return True
     
+    def can_transfer(self, amount: float) -> bool:
+        """
+        Check if account has sufficient funds for transfer (thread-safe).
+        
+        Acquires the mutex to ensure consistent balance check.
+        
+        Args:
+            amount (float): Amount to check for transfer
+            
+        Returns:
+            bool: True if sufficient funds available
+        """
+        if amount <= 0:
+            return False
+        
+        with self._lock:
+            return self.balance >= amount
+    
     def get_transaction_history(self) -> list:
         """
         Retrieve the complete transaction history (thread-safe).
@@ -178,6 +176,14 @@ class Account:
         with self._lock:
             return self._transaction_history.copy()
     
+    def acquire_lock(self):
+        """Acquire the account's lock for external synchronization."""
+        self._lock.acquire()
+
+    def release_lock(self):
+        """Release the account's lock for external synchronization."""
+        self._lock.release()
+
     def __repr__(self) -> str:
         """String representation of the account."""
         return (f"Account(id={self.account_id}, holder={self.holder_name}, "

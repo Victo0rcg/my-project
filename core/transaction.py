@@ -5,9 +5,9 @@ Provides Transaction class, TransactionType enum, and transaction-related utilit
 """
 
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 
 
 class TransactionType(Enum):
@@ -38,7 +38,7 @@ class Transaction:
     types: deposits, withdrawals, transfers, and account queries.
     
     Attributes:
-        transaction_id (str): Unique identifier for the transaction
+        transaction_id (str): Unique identifier assigned at build time by TransactionBuilder
         transaction_type (TransactionType): Type of operation (DEPOSIT, WITHDRAWAL, TRANSFER, QUERY)
         source_account_id (str): Account initiating the operation
         amount (float): Transaction amount
@@ -60,18 +60,14 @@ class Transaction:
     destination_account_id: Optional[str] = None
     timestamp: Optional[datetime] = None
     block_number: int = 0
-    status: str = "PENDING"
+    status: TransactionStatus = TransactionStatus.PENDING
     description: str = ""
-    metadata: dict = None
+    metadata: dict = field(default_factory=dict)
     
     def __post_init__(self):
         """Initialize default values and validate transaction."""
         if self.timestamp is None:
-            self.timestamp = datetime.now()
-        
-        if self.metadata is None:
-            self.metadata = {}
-        
+            self.timestamp = datetime.now()       
         # Validate transaction consistency
         self._validate()
     
@@ -82,8 +78,11 @@ class Transaction:
         Raises:
             ValueError: If transaction violates constraints
         """
-        if self.amount <= 0:
-            raise ValueError(f"Transaction amount must be positive, got {self.amount}")
+        if self.transaction_type != TransactionType.QUERY:
+            if self.amount <= 0:
+                raise ValueError(
+                    f"Transaction amount must be positive, got {self.amount}"
+                )
         
         if not self.transaction_id:
             raise ValueError("Transaction ID cannot be empty")
@@ -94,24 +93,24 @@ class Transaction:
             if self.source_account_id == self.destination_account_id:
                 raise ValueError("Source and destination accounts cannot be the same")
         
-        if self.transaction_type not in TransactionType:
+        if not isinstance(self.transaction_type, TransactionType):
             raise ValueError(f"Invalid transaction type: {self.transaction_type}")
     
     def mark_authorized(self) -> None:
         """Mark transaction as authorized by RBAC policy."""
-        if self.status == "PENDING":
-            self.status = "AUTHORIZED"
+        if self.status == TransactionStatus.PENDING:
+            self.status = TransactionStatus.AUTHORIZED
             self.metadata['authorized_at'] = datetime.now().isoformat()
     
     def mark_processing(self) -> None:
         """Mark transaction as currently being processed."""
-        if self.status in ["AUTHORIZED", "PENDING"]:
-            self.status = "PROCESSING"
+        if self.status in [TransactionStatus.AUTHORIZED, TransactionStatus.PENDING]:
+            self.status = TransactionStatus.PROCESSING
             self.metadata['processing_started_at'] = datetime.now().isoformat()
     
     def mark_completed(self) -> None:
         """Mark transaction as successfully completed."""
-        self.status = "COMPLETED"
+        self.status = TransactionStatus.COMPLETED
         self.metadata['completed_at'] = datetime.now().isoformat()
     
     def mark_failed(self, reason: str = "") -> None:
@@ -121,7 +120,7 @@ class Transaction:
         Args:
             reason (str): Reason for failure
         """
-        self.status = "FAILED"
+        self.status = TransactionStatus.FAILED
         self.metadata['failed_at'] = datetime.now().isoformat()
         if reason:
             self.metadata['failure_reason'] = reason
@@ -133,7 +132,7 @@ class Transaction:
         Args:
             reason (str): Reason for denial
         """
-        self.status = "DENIED"
+        self.status = TransactionStatus.DENIED
         self.metadata['denied_at'] = datetime.now().isoformat()
         self.metadata['denial_reason'] = reason
     
@@ -214,7 +213,7 @@ class Transaction:
             'user_role': self.user_role,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'block_number': self.block_number,
-            'status': self.status,
+            'status': self.status.value,
             'description': self.description,
             'metadata': self.metadata
         }
@@ -260,7 +259,7 @@ class TransactionBuilder:
             user_id (str): User requesting the transaction
             user_role (str): User's role for RBAC
         """
-        self._transaction_id = transaction_id
+        self._transaction_id = ""
         self._user_id = user_id
         self._user_role = user_role
         self._transaction_type: Optional[TransactionType] = None
@@ -337,7 +336,7 @@ class TransactionBuilder:
         """
         self._transaction_type = TransactionType.QUERY
         self._source_account_id = account_id
-        self._amount = 0.0
+        self._amount: Optional[float] = None
         self._description = f"Balance query for {account_id}"
         return self
     
@@ -354,7 +353,7 @@ class TransactionBuilder:
         self._block_number = block_number
         return self
     
-    def with_metadata(self, key: str, value: any) -> 'TransactionBuilder':
+    def with_metadata(self, key: str, value: Any) -> 'TransactionBuilder':
         """
         Add metadata key-value pair.
         

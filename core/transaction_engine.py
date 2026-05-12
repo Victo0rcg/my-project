@@ -4,57 +4,15 @@ Implements a producer-consumer pattern for concurrent transaction processing
 with thread-safe queue management and semaphore-based concurrency control.
 """
 
+import logging
 import threading
 import queue
 from typing import Dict, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass
-from datetime import datetime
-from enum import Enum
+from .transaction import (Transaction, TransactionType, TransactionStatus)
 
 if TYPE_CHECKING:
     from .account import Account
-
-
-class TransactionType(Enum):
-    """Types of banking transactions."""
-    DEPOSIT = "DEPOSIT"
-    WITHDRAWAL = "WITHDRAWAL"
-    TRANSFER = "TRANSFER"
-    QUERY = "QUERY"
-
-
-@dataclass
-class Transaction:
-    """
-    Represents a banking transaction.
-    
-    Attributes:
-        transaction_id (str): Unique identifier for the transaction
-        transaction_type (TransactionType): Type of operation
-        source_account_id (str): Account initiating the operation
-        destination_account_id (str): Target account (for transfers)
-        amount (float): Transaction amount
-        user_id (str): User requesting the transaction
-        user_role (str): Role of the requesting user
-        timestamp (datetime): When the transaction was created
-        block_number (int): Fictitious block number for SCAN scheduling
-        status (str): Current status (PENDING, COMPLETED, FAILED, DENIED)
-    """
-    transaction_id: str
-    transaction_type: TransactionType
-    source_account_id: str
-    amount: float
-    user_id: str
-    user_role: str
-    destination_account_id: Optional[str] = None
-    timestamp: Optional[datetime] = None
-    block_number: int = 0
-    status: str = "PENDING"
-    
-    def __post_init__(self):
-        """Initialize default timestamp if not provided."""
-        if self.timestamp is None:
-            self.timestamp = datetime.now()
 
 
 class TransactionEngine:
@@ -95,6 +53,7 @@ class TransactionEngine:
         self._accounts = accounts
         self._max_concurrent = max_concurrent
         self._semaphore = threading.Semaphore(max_concurrent)
+        self._num_workers = num_workers
         self._workers = []
         self._running = False
         self._lock = threading.Lock()
@@ -130,7 +89,7 @@ class TransactionEngine:
             self._running = True
         
         # Start worker threads
-        for i in range(len(self._workers), 3):  # Default 3 workers
+        for i in range(len(self._workers), self._num_workers):  # Default 3 workers
             worker = threading.Thread(
                 target=self._worker_loop,
                 name=f"TransactionWorker-{i+1}",
@@ -188,18 +147,24 @@ class TransactionEngine:
     
     def _worker_loop(self) -> None:
         """Main worker thread loop (consumer)."""
-        while self._running:
+        while True:
             try:
                 # Wait for a transaction with timeout to allow graceful shutdown
                 transaction = self._transaction_queue.get(timeout=1.0)
                 
                 # Sentinel value signals shutdown
                 if transaction is None:
+                    self._transaction_queue.task_done()
                     break
+                
+                # Mark as authorized
+                transaction.mark_authorized()
                 
                 # Acquire semaphore slot before processing
                 self._semaphore.acquire()
                 try:
+                    # Mark as processing
+                    transaction.mark_processing()
                     result = self._process_transaction(transaction)
                     self._result_queue.put(result)
                 finally:
@@ -210,7 +175,7 @@ class TransactionEngine:
             except queue.Empty:
                 continue
             except Exception as e:
-                print(f"Worker error: {e}")
+                logging.exception(f"Worker error: {e}")
     
     def _process_transaction(self, transaction: Transaction) -> Transaction:
         """
@@ -228,12 +193,12 @@ class TransactionEngine:
             # Apply RBAC authorization if hook is set
             if self._authorization_hook:
                 if not self._authorization_hook(transaction):
-                    transaction.status = "DENIED"
+                    transaction.mark_denied("Authorization failed")
                     return transaction
             
             # Validate accounts exist
             if transaction.source_account_id not in self._accounts:
-                transaction.status = "FAILED"
+                transaction.mark_failed("Source account not found")
                 return transaction
             
             source_account = self._accounts[transaction.source_account_id]
@@ -242,24 +207,24 @@ class TransactionEngine:
             if transaction.transaction_type == TransactionType.DEPOSIT:
                 if source_account.deposit(transaction.amount, 
                                          f"Deposit by {transaction.user_id}"):
-                    transaction.status = "COMPLETED"
+                    transaction.mark_completed()
                 else:
-                    transaction.status = "FAILED"
+                    transaction.mark_failed("Deposit operation failed")
             
             elif transaction.transaction_type == TransactionType.WITHDRAWAL:
                 if source_account.withdraw(transaction.amount,
                                           f"Withdrawal by {transaction.user_id}"):
-                    transaction.status = "COMPLETED"
+                    transaction.mark_completed()
                 else:
-                    transaction.status = "FAILED"
+                    transaction.mark_failed("Withdrawal operation failed")
             
             elif transaction.transaction_type == TransactionType.TRANSFER:
                 if not transaction.destination_account_id:
-                    transaction.status = "FAILED"
+                    transaction.mark_failed("Destination account not specified")
                     return transaction
                 
                 if transaction.destination_account_id not in self._accounts:
-                    transaction.status = "FAILED"
+                    transaction.mark_failed("Destination account not found")
                     return transaction
                 
                 dest_account = self._accounts[transaction.destination_account_id]
@@ -267,7 +232,7 @@ class TransactionEngine:
                 # Apply Banker's Algorithm if guard is set
                 if self._bankers_guard:
                     if not self._bankers_guard(transaction):
-                        transaction.status = "DENIED"
+                        transaction.mark_denied("Banker's Algorithm check failed")
                         return transaction
                 
                 # Execute transfer with ordered locking to prevent deadlock
@@ -275,25 +240,26 @@ class TransactionEngine:
                                         transaction.amount,
                                         transaction.source_account_id,
                                         transaction.destination_account_id):
-                    transaction.status = "COMPLETED"
+                    transaction.mark_completed()
                 else:
-                    transaction.status = "FAILED"
+                    transaction.mark_failed("Transfer operation failed")
             
             elif transaction.transaction_type == TransactionType.QUERY:
                 # Query operations don't modify state, always succeed
-                transaction.status = "COMPLETED"
+                transaction.metadata['balance'] = source_account.get_balance()
+                transaction.mark_completed()
             
             else:
-                transaction.status = "FAILED"
+                transaction.mark_failed("Unknown transaction type")
             
             return transaction
             
         except ValueError as e:
-            transaction.status = "FAILED"
+            transaction.mark_failed(f"Validation error: {str(e)}")
             return transaction
         except Exception as e:
-            print(f"Transaction {transaction.transaction_id} error: {e}")
-            transaction.status = "FAILED"
+            logging.exception(f"Transaction {transaction.transaction_id} error: {e}")
+            transaction.mark_failed(f"Exception: {str(e)}")
             return transaction
     
     def _execute_transfer(self, source_account: 'Account', 
@@ -304,7 +270,9 @@ class TransactionEngine:
         """
         Execute a transfer between two accounts with ordered locking.
         
+        Manages synchronization orchestration for transfer operations.
         Acquires locks in account ID order to prevent circular wait deadlock.
+        Performs: verify balance -> debit source -> credit destination
         
         Args:
             source_account (Account): Source account object
@@ -319,24 +287,29 @@ class TransactionEngine:
         # Order locks by account ID to prevent deadlock
         if source_id < dest_id:
             first_account, second_account = source_account, dest_account
-            first_id, second_id = source_id, dest_id
         else:
             first_account, second_account = dest_account, source_account
-            first_id, second_id = dest_id, source_id
         
         # Acquire locks in order
-        with first_account._lock:
-            with second_account._lock:
-                # Verify funds after acquiring all locks
-                if source_account.balance < amount:
+        first_account.acquire_lock()
+        try:
+            second_account.acquire_lock()
+            try:
+                # Verify balance
+                if source_account.get_balance() < amount:
                     return False
                 
-                # Execute transfer atomically
-                source_account.transfer_internal(-amount, dest_id, 
-                                                f"Transfer to {dest_id}")
-                dest_account.transfer_internal(amount, source_id,
-                                             f"Transfer from {source_id}")
+                # Debit source account
+                source_account.transfer_internal(amount, is_debit=True)
+                
+                # Credit destination account
+                dest_account.transfer_internal(amount, is_debit=False)
+                
                 return True
+            finally:
+                second_account.release_lock()
+        finally:
+            first_account.release_lock()
     
     def get_pending_count(self) -> int:
         """Get count of pending transactions in queue."""
@@ -373,15 +346,12 @@ class TransactionEngine:
                 break
         return results
     
-    def wait_completion(self, timeout: float = 30.0) -> bool:
+    def wait_completion(self):
         """
         Wait for all pending transactions to complete.
-        
-        Args:
-            timeout (float): Maximum seconds to wait
-            
+                   
         Returns:
             bool: True if all completed, False if timeout
         """
-        return self._transaction_queue.join.__self__.__class__.__name__ == 'Queue' \
-               or self._transaction_queue.all_tasks_done.wait(timeout=timeout)
+        self._transaction_queue.join()
+        return True
