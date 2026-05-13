@@ -14,7 +14,6 @@ de planificación definida.
 
 import logging
 import threading
-import time
 import random
 
 from core.account import Account
@@ -31,6 +30,7 @@ from concurrency.bankers_guard import GuardiaBanquero
 # ---------------------------------------------------------------------------
 
 logging.basicConfig(
+    filename="banco-transacciones-so/logs/system.log",
     level=logging.INFO,
     format="%(asctime)s [%(threadName)s] %(message)s",
     datefmt="%H:%M:%S",
@@ -182,7 +182,7 @@ def construir_guard_banquero(cuentas: dict):
 # Esto simula el subsistema de escritura en disco con planificación SCAN.
 # ---------------------------------------------------------------------------
 
-def registrar_resultados_con_scan(resultados: list, archivo_log: str = "logs/transactions.log"):
+def registrar_resultados_con_scan(resultados: list, archivo_log: str = "banco-transacciones-so/logs/transactions.log"):
     """
     Ordena y registra los resultados de las transacciones usando planificación SCAN.
 
@@ -212,9 +212,6 @@ def registrar_resultados_con_scan(resultados: list, archivo_log: str = "logs/tra
     orden_scan = scan_scheduling(solicitudes, cabezal_inicial, direction='up')
 
     logging.info(f"[SCAN] Orden de escritura de bloques: {orden_scan}")
-
-    import os
-    os.makedirs("logs", exist_ok=True)
 
     with open(archivo_log, "a", encoding="utf-8") as f:
         for bloque in orden_scan:
@@ -426,7 +423,7 @@ def main():
 
     # 9. Ordenar y registrar resultados con SCAN
     logging.info("[MAIN] Iniciando escritura de log con planificación SCAN...")
-    registrar_resultados_con_scan(resultados, archivo_log="logs/transactions.log")
+    registrar_resultados_con_scan(resultados, archivo_log="banco-transacciones-so/logs/transactions.log")
     logging.info("[MAIN] Log escrito en logs/transactions.log")
 
     # 10. Mostrar resumen en consola
