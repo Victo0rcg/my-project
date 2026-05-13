@@ -1,176 +1,438 @@
-import sys
-import logging
-import time
+"""
+main.py — Coordinador principal del sistema de transacciones bancarias.
 
-# ==========================================
-# CONFIGURACION Y LOGGING
-# ==========================================
-def configurar_logger():
-    """Configura el formato base para la salida en consola."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='[%(asctime)s] %(message)s',
-        datefmt='%H:%M:%S',
-        handlers=[logging.StreamHandler(sys.stdout)]
+Este módulo integra los componentes funcionales del proyecto:
+  - core/           : Motor de cuentas y transacciones (Módulo 1)
+  - scheduling/     : Planificador SCAN de logs       (Módulo 2)
+  - security/       : Control de acceso RBAC          (Módulo 3)
+  - concurrency/    : Algoritmo del Banquero          (Módulo 4)
+
+Su responsabilidad principal es inicializar los servicios, orquestar el
+procesamiento de transacciones y registrar los resultados con la política
+de planificación definida.
+"""
+
+import logging
+import threading
+import time
+import random
+
+from core.account import Account
+from core.transaction import Transaction, TransactionType, TransactionBuilder
+from core.transaction_engine import TransactionEngine
+from scheduling.scan_scheduler import scan_scheduling
+from security.roles import Rol, Operacion
+from security.rbac_policy import PoliticaRBAC
+from concurrency.bankers_guard import GuardiaBanquero
+
+
+# ---------------------------------------------------------------------------
+# Configuración de logging
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(threadName)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+
+
+# ---------------------------------------------------------------------------
+# Sección 1: Integración RBAC con el motor de transacciones
+#
+# El motor de transacciones invoca el hook con una instancia Transaction cuyo
+# atributo user_role es una cadena de texto. PoliticaRBAC opera con los enums
+# Rol y Operacion, por lo que este componente traduce la solicitud y delega
+# la decisión de autorización en la política establecida.
+# ---------------------------------------------------------------------------
+
+# Mapa de TransactionType → Operacion RBAC
+_TIPO_A_OPERACION = {
+    TransactionType.DEPOSIT:    Operacion.DEPOSITO,
+    TransactionType.WITHDRAWAL: Operacion.RETIRO,
+    TransactionType.TRANSFER:   Operacion.TRANSFERENCIA,
+    TransactionType.QUERY:      Operacion.CONSULTA,
+}
+
+def construir_hook_rbac(politica: PoliticaRBAC):
+    """
+    Construye un hook de autorización para el motor de transacciones.
+
+    El hook convierte el atributo user_role de la transacción al enum Rol,
+    y el tipo de transacción al enum Operacion antes de consultar la política
+    RBAC. Si el rol o la operación no son reconocidos, la transacción se
+    considera no autorizada.
+
+    Parámetros
+    ----------
+    politica : PoliticaRBAC
+        Instancia de la política de control de acceso que será utilizada.
+
+    Retorna
+    -------
+    Callable[[Transaction], bool]
+        Función de autorización usada por el motor de transacciones.
+    """
+    def hook(transaction: Transaction) -> bool:
+        try:
+            rol = Rol(transaction.user_role)           # string → enum
+        except ValueError:
+            logging.error(f"[RBAC] Rol desconocido: '{transaction.user_role}'")
+            return False
+
+        operacion = _TIPO_A_OPERACION.get(transaction.transaction_type)
+        if operacion is None:
+            logging.error(f"[RBAC] Tipo de transacción sin mapeo RBAC: {transaction.transaction_type}")
+            return False
+
+        try:
+            return politica.verificar_permiso(rol, operacion)
+        except PermissionError:
+            return False   # PoliticaRBAC lanza PermissionError cuando deniega
+
+    return hook
+
+
+# ---------------------------------------------------------------------------
+# Sección 2: Integración del Algoritmo del Banquero con el motor
+#
+# GuardiaBanquero modela los recursos mediante matrices de procesos por
+# tipos de recurso. En esta adaptación, el único recurso disputado en una
+# transferencia es el lock de la cuenta origen.
+#
+# Adaptación al modelo de cuentas:
+#   - Cada cuenta activa se considera como un proceso en el algoritmo.
+#   - El único recurso es el lock de cuenta, representado como un vector.
+#   - recursos_disponibles = [num_cuentas] (todos los locks libres al inicio)
+#   - necesidad_maxima[i]  = [1]          (cada cuenta puede requerir 1 lock)
+#   - recursos_asignados   = [[0], [0], ...] (ninguno asignado al inicio)
+#
+# Antes de procesar una transferencia se solicita un recurso adicional para la
+# cuenta fuente. Si el Algoritmo del Banquero determina que el estado es
+# seguro, la operación puede continuar; en caso contrario, se deniega.
+# ---------------------------------------------------------------------------
+
+def construir_guard_banquero(cuentas: dict):
+    """
+    Construye un guard para el Algoritmo del Banquero en el contexto bancario.
+
+    Esta función adapta las solicitudes de transferencia del motor a una
+    evaluación de seguridad de recursos en el Algoritmo del Banquero. Sólo
+    las transacciones de tipo TRANSFER se someten a esta verificación.
+
+    Parámetros
+    ----------
+    cuentas : dict
+        Diccionario de cuentas bancarias presentes en el sistema.
+
+    Retorna
+    -------
+    Callable[[Transaction], bool]
+        Función que evalúa si una transferencia puede ejecutarse sin riesgo
+        de bloquear el sistema.
+    """
+    n = len(cuentas)
+    cuenta_ids = list(cuentas.keys())
+    indice_cuenta = {cid: i for i, cid in enumerate(cuenta_ids)}
+
+    # Estado inicial: todos los locks disponibles, nadie tiene nada asignado
+    recursos_disponibles  = [n]          # 1 tipo de recurso: locks de cuenta
+    necesidad_maxima      = [[1]] * n    # cada cuenta puede necesitar 1 lock
+    recursos_asignados    = [[0]] * n    # ninguna cuenta tiene locks asignados
+
+    guard = GuardiaBanquero(
+        recursos_disponibles,
+        necesidad_maxima,
+        recursos_asignados,
     )
 
-# ==========================================
-# IMPORTACION DE MODULOS DEL SISTEMA
-# ==========================================
-# Carga de los componentes principales de la arquitectura.
-try:
-    from security.roles import Rol, Operacion
-    from security.rbac_policy import PoliticaRBAC
-    from concurrency.bankers_guard import GuardiaBanquero
-    # Se iran descomentando a medida que se integren:
-    # from core.transaction_engine import MotorTransacciones
-    # from scheduling.scan_scheduler import PlanificadorSCAN
-    MODULOS_LISTOS = True
-except ImportError as error_importacion:
-    MODULOS_LISTOS = False
-    print(f"Atencion: Faltan modulos por integrar ({error_importacion}).")
+    lock_guard = threading.Lock()   # proteger el estado interno del banquero
 
-# ==========================================
-# ESCENARIOS DE PRUEBA
-# ==========================================
+    def bankers_hook(transaction: Transaction) -> bool:
+        if transaction.transaction_type != TransactionType.TRANSFER:
+            return True  # sólo aplica a transferencias
 
-def escenario_concurrencia():
-    """Prueba de estres para el motor de transacciones."""
-    print("\n--- INICIANDO PRUEBA DE ESTRES (50 HILOS) ---")
-    print(">> Aqui se instanciara el motor principal y se lanzaran los hilos concurrentes.")
-    # TODO: Importar e instanciar el motor de transacciones.
-    # TODO: Crear bucle para instanciar e iniciar multiples hilos.
-    # TODO: Esperar a los hilos con join() y mostrar resultados.
-    pass
+        idx = indice_cuenta.get(transaction.source_account_id)
+        if idx is None:
+            return True  # cuenta desconocida: deja que el motor la rechace
 
-def escenario_control_acceso():
-    """Prueba de dominios de proteccion."""
-    print("\n--- INICIANDO TEST DE DOMINIOS Y PERMISOS (RBAC) ---")
-    if not MODULOS_LISTOS:
-        print("[Error] Los modulos de seguridad no estan listos o hay un error de importacion.")
+        with lock_guard:
+            try:
+                resultado = guard.solicitar_recursos(idx, [1])
+                if resultado:
+                    # Liberar el recurso simulado una vez aprobada la solicitud.
+                    # La sincronización final de la transferencia se gestiona en
+                    # la ejecución real del motor.
+                    guard.recursos_disponibles[0] += 1
+                    guard.recursos_asignados[idx][0] -= 1
+                    guard.matriz_necesidad[idx][0]  += 1
+                return resultado
+            except ValueError as e:
+                logging.warning(f"[BANQUERO] Error al evaluar solicitud: {e}")
+                return False
+
+    return bankers_hook
+
+
+# ---------------------------------------------------------------------------
+# Sección 3: Planificador SCAN aplicado a los logs de transacciones
+#
+# Después de que el motor termina de procesar las transacciones, se recuperan
+# los resultados y se ordenan con SCAN antes de escribirlos en el log.
+# Esto simula el subsistema de escritura en disco con planificación SCAN.
+# ---------------------------------------------------------------------------
+
+def registrar_resultados_con_scan(resultados: list, archivo_log: str = "logs/transactions.log"):
+    """
+    Ordena y registra los resultados de las transacciones usando planificación SCAN.
+
+    El método aplica el algoritmo SCAN a los números de bloque asignados por el
+    motor para simular la planificación de E/S de disco. Los resultados se
+    escriben en el archivo de log especificado.
+
+    Parámetros
+    ----------
+    resultados : list
+        Lista de transacciones procesadas con su estado final.
+    archivo_log : str, opcional
+        Ruta del archivo de log en el que se almacenan los resultados.
+    """
+    if not resultados:
+        logging.info("[SCAN] No hay resultados que registrar.")
         return
 
-    politica_seguridad = PoliticaRBAC()
-    
-    # Prueba 1: Exito
-    print(">> CASO 1: Operacion Permitida (ADMINISTRADOR intentando TRANSFERENCIA)")
-    time.sleep(1)
-    try:
-        politica_seguridad.verificar_permiso(Rol.ADMINISTRADOR, Operacion.TRANSFERENCIA)
-        print(">> Resultado: Transaccion de transferencia autorizada. Continuara a los hilos.\n")
-    except PermissionError as error_permiso:
-        print(f">> Error inesperado: {error_permiso}\n")
+    solicitudes  = [r.block_number for r in resultados]
+    bloque_map   = {r.block_number: r for r in resultados}   # block → transacción
+    # Si hay bloques repetidos, guardar lista
+    bloque_lista: dict[int, list] = {}
+    for r in resultados:
+        bloque_lista.setdefault(r.block_number, []).append(r)
 
-    # Prueba 2: Fallo intencional
-    print(">> CASO 2: Operacion Denegada (AUDITOR intentando RETIRO)")
-    time.sleep(1)
-    try:
-        politica_seguridad.verificar_permiso(Rol.AUDITOR, Operacion.RETIRO)
-        print(">> Resultado: Transaccion de retiro continuara (ESTO NO DEBERIA PASAR).")
-    except PermissionError as error_permiso:
-        print(f">> PROCESO ABORTADO CORRECTAMENTE: {error_permiso}\n")
+    cabezal_inicial = 0
+    orden_scan = scan_scheduling(solicitudes, cabezal_inicial, direction='up')
 
-def escenario_prevencion_interbloqueos():
-    """Prueba de prevencion de interbloqueos."""
-    print("\n--- INICIANDO TEST DE INTERBLOQUEOS (ALGORITMO BANQUERO) ---")
-    if not MODULOS_LISTOS:
-        print("[Error] Los modulos de concurrencia no estan listos o hay un error de importacion.")
-        return
+    logging.info(f"[SCAN] Orden de escritura de bloques: {orden_scan}")
 
-    # Escenario inicial del sistema (Matriz clasica de Dijkstra)
-    recursos_disponibles = [3, 3, 2] # Instancias de [Recurso A, Recurso B, Recurso C]
-    necesidad_maxima = [
-        [7, 5, 3], # Proceso 0
-        [3, 2, 2], # Proceso 1
-        [9, 0, 2], # Proceso 2
-        [2, 2, 2]  # Proceso 3
+    import os
+    os.makedirs("logs", exist_ok=True)
+
+    with open(archivo_log, "a", encoding="utf-8") as f:
+        for bloque in orden_scan:
+            for txn in bloque_lista.get(bloque, []):
+                linea = (
+                    f"[{txn.transaction_id}] "
+                    f"bloque={txn.block_number:03d} | "
+                    f"{txn.transaction_type.value:<12} | "
+                    f"cuenta={txn.source_account_id} | "
+                    f"monto=${txn.amount:>10.2f} | "
+                    f"rol={txn.user_role:<15} | "
+                    f"estado={txn.status.value}\n"
+                )
+                f.write(linea)
+                logging.info(f"[SCAN] Escribiendo bloque {bloque:03d} → {txn.transaction_id} ({txn.status.value})")
+
+
+# ---------------------------------------------------------------------------
+# Sección 4: Simulación principal
+# ---------------------------------------------------------------------------
+
+def crear_cuentas() -> dict:
+    """Crea el conjunto inicial de cuentas bancarias."""
+    cuentas_data = [
+        ("ACC001", "Alice Gómez",    5_000.0),
+        ("ACC002", "Bob Martínez",   3_000.0),
+        ("ACC003", "Carol Herrera",  8_000.0),
+        ("ACC004", "David Ríos",     1_500.0),
+        ("ACC005", "Elena Vargas",  10_000.0),
     ]
-    asignacion_actual = [
-        [0, 1, 0], # Proceso 0
-        [2, 0, 0], # Proceso 1
-        [3, 0, 2], # Proceso 2
-        [2, 1, 1]  # Proceso 3
-    ]
-    
-    print(">> Inicializando estado del sistema con 4 procesos y 3 tipos de recursos...")
-    time.sleep(1.5)
-    guardia_recursos = GuardiaBanquero(recursos_disponibles, necesidad_maxima, asignacion_actual)
-    
-    # Simulamos que el Proceso 1 pide recursos que mantienen el sistema seguro
-    print("\n>> CASO 1: Peticion Segura (Proceso 1 solicita [1, 0, 2])")
-    time.sleep(1)
-    guardia_recursos.solicitar_recursos(id_proceso=1, solicitud_recursos=[1, 0, 2])
-    
-    # Simulamos que el Proceso 0 pide recursos que generarian Deadlock
-    print("\n>> CASO 2: Peticion Insegura provocando posible Deadlock (Proceso 0 solicita [0, 2, 0])")
-    time.sleep(1)
-    guardia_recursos.solicitar_recursos(id_proceso=0, solicitud_recursos=[0, 2, 0])
+    return {cid: Account(cid, nombre, saldo) for cid, nombre, saldo in cuentas_data}
 
-def escenario_planificacion_disco():
-    """Prueba de planificacion de I/O."""
-    print("\n--- INICIANDO VOLCADO DE LOGS A DISCO (ALGORITMO SCAN) ---")
-    print(">> Aqui se enviara el array de cilindros al planificador de disco.")
-    # TODO: Importar e instanciar el planificador SCAN.
-    # TODO: Enviar un array de peticiones de cilindros desordenadas.
-    # TODO: Mostrar el recorrido del cabezal ordenado.
-    pass
 
-def escenario_manejo_interrupciones():
-    """Simulacion de interrupciones de Hardware y Software."""
-    print("\n--- INICIANDO SIMULACION DE INTERRUPCIONES (TRAPS & HARDWARE) ---")
-    print(">> Aqui se simulara como el SO maneja excepciones criticas.")
-    
-    time.sleep(1)
-    print("\n[Simulando Interrupcion de Software...]")
-    logging.warning("[TRAP] Excepcion detectada: Intento de division por cero en calculo de divisas.")
-    logging.info("[Manejador SO] Abortando proceso defectuoso. Volcando memoria (Core Dump)... OK.")
-    
-    time.sleep(1.5)
-    print("\n[Simulando Interrupcion de Hardware...]")
-    logging.error("[IRQ 12] Alerta de Hardware: Conexion perdida con el Cajero Automatico 04.")
-    logging.info("[Manejador SO] Pausando transacciones del Cajero 04. Guardando estado en bloque de control de proceso (PCB)... OK.")
-    
-    print("\n>> Manejo de interrupciones ejecutado. El sistema sigue estable.")
+def crear_transacciones_demo(cuentas: dict) -> list:
+    """
+    Construye un conjunto de transacciones de demostración que cubren
+    todos los tipos y todos los roles definidos en el sistema.
+    """
+    ids_cuentas = list(cuentas.keys())
+    transacciones = []
 
-# ==========================================
-# INTERFAZ PRINCIPAL
-# ==========================================
-def mostrar_menu():
-    print("\n" + "="*65)
-    print(" SIMULADOR DE TRANSACCIONES - SISTEMAS OPERATIVOS")
-    print("="*65)
-    print(" Seleccione el escenario de evaluacion:")
-    print(" 1. [Concurrencia] Prueba de estres (50 hilos)")
-    print(" 2. [Seguridad] Validar dominios de proteccion (RBAC)")
-    print(" 3. [Interbloqueos] Forzar escenario de interbloqueo (Banquero)")
-    print(" 4. [Planificacion] Procesar cola de I/O en disco (SCAN)")
-    print(" 5. [Interrupciones] Forzar fallos de Hardware/Software")
-    print(" 6. Salir del simulador")
-    print("="*65)
+    # -- Depósitos (CAJERO y ADMINISTRADOR pueden hacerlos) --
+    transacciones.append(
+        TransactionBuilder("cajero01", "CAJERO")
+        .with_deposit("ACC001", 1_000.0)
+        .with_metadata("canal", "ventanilla")
+        .build()
+    )
+    transacciones.append(
+        TransactionBuilder("admin01", "ADMINISTRADOR")
+        .with_deposit("ACC003", 500.0)
+        .with_metadata("canal", "sistema")
+        .build()
+    )
+
+    # -- Retiros (CAJERO y ADMINISTRADOR) --
+    transacciones.append(
+        TransactionBuilder("cajero01", "CAJERO")
+        .with_withdrawal("ACC002", 200.0)
+        .build()
+    )
+    transacciones.append(
+        TransactionBuilder("cajero02", "CAJERO")
+        .with_withdrawal("ACC004", 5_000.0)   # fallará: fondos insuficientes
+        .build()
+    )
+
+    # -- Transferencias (sólo ADMINISTRADOR) --
+    transacciones.append(
+        TransactionBuilder("admin01", "ADMINISTRADOR")
+        .with_transfer("ACC001", "ACC002", 300.0)
+        .build()
+    )
+    transacciones.append(
+        TransactionBuilder("admin01", "ADMINISTRADOR")
+        .with_transfer("ACC005", "ACC004", 2_000.0)
+        .build()
+    )
+
+    # -- Consultas (todos los roles) --
+    transacciones.append(
+        TransactionBuilder("auditor01", "AUDITOR")
+        .with_query("ACC003")
+        .build()
+    )
+    transacciones.append(
+        TransactionBuilder("cajero01", "CAJERO")
+        .with_query("ACC001")
+        .build()
+    )
+
+    # -- Operaciones denegadas por RBAC --
+    # AUDITOR intentando depósito → denegado
+    transacciones.append(
+        TransactionBuilder("auditor01", "AUDITOR")
+        .with_deposit("ACC002", 100.0)
+        .with_metadata("nota", "debe ser denegado por RBAC")
+        .build()
+    )
+    # CAJERO intentando transferencia → denegado
+    transacciones.append(
+        TransactionBuilder("cajero02", "CAJERO")
+        .with_transfer("ACC003", "ACC005", 500.0)
+        .with_metadata("nota", "debe ser denegado por RBAC")
+        .build()
+    )
+
+    # -- Carga aleatoria adicional --
+    random.seed(42)
+    roles_permitidos = ["CAJERO", "ADMINISTRADOR", "AUDITOR"]
+    for i in range(10):
+        cuenta_src = random.choice(ids_cuentas)
+        rol = random.choice(roles_permitidos)
+        tipo = random.choice(["deposito", "retiro", "consulta"])
+
+        if tipo == "deposito":
+            txn = TransactionBuilder(f"user{i}", rol).with_deposit(cuenta_src, random.uniform(50, 500)).build()
+        elif tipo == "retiro":
+            txn = TransactionBuilder(f"user{i}", rol).with_withdrawal(cuenta_src, random.uniform(10, 300)).build()
+        else:
+            txn = TransactionBuilder(f"user{i}", rol).with_query(cuenta_src).build()
+
+        transacciones.append(txn)
+
+    return transacciones
+
+
+def imprimir_estado_cuentas(cuentas: dict):
+    """Imprime el saldo final de todas las cuentas."""
+    print("\n" + "="*60)
+    print("  ESTADO FINAL DE CUENTAS")
+    print("="*60)
+    for cuenta in cuentas.values():
+        print(f"  {cuenta}")
+    print("="*60 + "\n")
+
+
+def imprimir_resumen_resultados(resultados: list):
+    """Imprime un resumen de los resultados de las transacciones."""
+    from core.transaction import TransactionStatus
+    completadas = sum(1 for r in resultados if r.status == TransactionStatus.COMPLETED)
+    fallidas    = sum(1 for r in resultados if r.status == TransactionStatus.FAILED)
+    denegadas   = sum(1 for r in resultados if r.status == TransactionStatus.DENIED)
+
+    print("\n" + "="*60)
+    print("  RESUMEN DE TRANSACCIONES")
+    print("="*60)
+    print(f"  Total procesadas : {len(resultados)}")
+    print(f"  Completadas      : {completadas}")
+    print(f"  Fallidas         : {fallidas}  (ej: fondos insuficientes)")
+    print(f"  Denegadas        : {denegadas}  (RBAC o Banquero)")
+    print("="*60)
+
+    print("\n  Detalle:")
+    for r in resultados:
+        icono = "✓" if r.status.value == "COMPLETED" else "✗"
+        print(f"  {icono} [{r.transaction_id}] {r.get_operation_summary()} "
+              f"| rol={r.user_role} | {r.status.value}")
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Punto de entrada
+# ---------------------------------------------------------------------------
 
 def main():
-    configurar_logger()
+    print("\n" + "="*60)
+    print("  PROCESADOR DE TRANSACCIONES BANCARIAS")
+    print("  Sistemas Operativos — UTP 2026-1")
+    print("="*60 + "\n")
 
-    while True:
-        mostrar_menu()
-        opcion_seleccionada = input(">> Opcion [1-6]: ").strip()
+    # 1. Crear cuentas
+    cuentas = crear_cuentas()
+    logging.info(f"[MAIN] {len(cuentas)} cuentas inicializadas.")
 
-        if opcion_seleccionada == '1':
-            escenario_concurrencia()
-        elif opcion_seleccionada == '2':
-            escenario_control_acceso()
-        elif opcion_seleccionada == '3':
-            escenario_prevencion_interbloqueos()
-        elif opcion_seleccionada == '4':
-            escenario_planificacion_disco()
-        elif opcion_seleccionada == '5':
-            escenario_manejo_interrupciones()
-        elif opcion_seleccionada == '6':
-            print("\nFinalizando procesos y cerrando simulador.")
-            sys.exit(0)
-        else:
-            print("\nError: Ingrese un comando valido.")
-        
-        input("\n[Presione ENTER para continuar...]")
+    # 2. Inicializar política RBAC y construir el hook para el motor
+    politica_rbac = PoliticaRBAC()
+    hook_rbac     = construir_hook_rbac(politica_rbac)
+    logging.info("[MAIN] Política RBAC cargada.")
 
-main()
+    # 3. Inicializar Algoritmo del Banquero y construir el guard para el motor
+    hook_banquero = construir_guard_banquero(cuentas)
+    logging.info("[MAIN] Guardia Banquero inicializado.")
+
+    # 4. Crear y arrancar el motor de transacciones
+    motor = TransactionEngine(cuentas, max_concurrent=3, num_workers=3)
+    motor.set_authorization_hook(hook_rbac)
+    motor.set_bankers_guard(hook_banquero)
+    motor.start()
+    logging.info("[MAIN] Motor de transacciones iniciado.")
+
+    # 5. Generar y someter transacciones
+    transacciones = crear_transacciones_demo(cuentas)
+    logging.info(f"[MAIN] Sometiendo {len(transacciones)} transacciones al motor...")
+
+    for txn in transacciones:
+        motor.submit_transaction(txn)
+
+    # 6. Esperar a que todas las transacciones terminen
+    motor.wait_completion()
+    logging.info("[MAIN] Todas las transacciones han sido procesadas.")
+
+    # 7. Recuperar resultados
+    resultados = motor.get_all_results()
+
+    # 8. Detener el motor
+    motor.stop()
+    logging.info("[MAIN] Motor detenido.")
+
+    # 9. Ordenar y registrar resultados con SCAN
+    logging.info("[MAIN] Iniciando escritura de log con planificación SCAN...")
+    registrar_resultados_con_scan(resultados, archivo_log="logs/transactions.log")
+    logging.info("[MAIN] Log escrito en logs/transactions.log")
+
+    # 10. Mostrar resumen en consola
+    imprimir_resumen_resultados(resultados)
+    imprimir_estado_cuentas(cuentas)
+
+
+if __name__ == "__main__":
+    main()
