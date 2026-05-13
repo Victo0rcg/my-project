@@ -1,6 +1,6 @@
 """
-Module 1: Core Account Management
-Implements thread-safe bank accounts with mutex synchronization.
+Módulo 1: Gestión Central de Cuentas
+Implementa cuentas bancarias seguras para hilos con sincronización mediante mutex.
 """
 
 import threading
@@ -11,17 +11,17 @@ from datetime import datetime
 @dataclass
 class Account:
     """
-    Represents a bank account with thread-safe operations.
+    Representa una cuenta bancaria con operaciones seguras para hilos.
     
-    Each account maintains its own Lock to ensure atomicity of operations
-    like deposit, withdraw, and balance queries across concurrent threads.
+    Cada cuenta mantiene su propio bloqueo para asegurar la atomicidad de operaciones
+    como depósito, retiro y consultas de saldo en hilos concurrentes.
     
-    Attributes:
-        account_id (str): Unique identifier for the account
-        holder_name (str): Name of the account holder
-        balance (float): Current account balance
-        _lock (threading.Lock): Mutex for synchronizing access to balance
-        _transaction_history (list): Record of all transactions
+    Atributos:
+        account_id (str): Identificador único de la cuenta
+        holder_name (str): Nombre del titular de la cuenta
+        balance (float): Saldo actual de la cuenta
+        _lock (threading.Lock): Mutex para sincronizar el acceso al saldo
+        _transaction_history (list): Registro de todas las transacciones
     """
     
     account_id: str
@@ -29,7 +29,7 @@ class Account:
     initial_balance: float = 0.0
     
     def __post_init__(self):
-        """Initialize the account with thread safety primitives."""
+        """Inicializa la cuenta con primitivas de seguridad para hilos."""
         self.balance = self.initial_balance
         self._lock = threading.Lock()
         self._transaction_history = []
@@ -37,23 +37,23 @@ class Account:
     
     def deposit(self, amount: float, description: str = "Deposit") -> bool:
         """
-        Deposit funds into the account (thread-safe).
+        Deposita fondos en la cuenta (seguro para hilos).
         
-        Acquires the mutex before modifying the balance, ensuring atomicity.
-        Multiple threads can call this concurrently without race conditions.
+        Adquiere el mutex antes de modificar el saldo, asegurando atomicidad.
+        Múltiples hilos pueden invocar este método concurrentemente sin condiciones de carrera.
         
-        Args:
-            amount (float): Amount to deposit (must be positive)
-            description (str): Optional description of the deposit
+        Argumentos:
+            amount (float): Cantidad a depositar (debe ser positiva)
+            description (str): Descripción opcional del depósito
             
-        Returns:
-            bool: True if successful, False if amount is invalid
+        Retorna:
+            bool: Verdadero si es exitoso, Falso si la cantidad es inválida
             
-        Raises:
-            ValueError: If amount is negative or zero
+        Levanta:
+            ValueError: Si la cantidad es negativa o cero
         """
         if amount <= 0:
-            raise ValueError(f"Deposit amount must be positive, got {amount}")
+            raise ValueError(f"La cantidad de depósito debe ser positiva, se recibió {amount}")
         
         with self._lock:
             previous_balance = self.balance
@@ -71,23 +71,23 @@ class Account:
     
     def withdraw(self, amount: float, description: str = "Withdrawal") -> bool:
         """
-        Withdraw funds from the account (thread-safe).
+        Retira fondos de la cuenta (seguro para hilos).
         
-        Acquires the mutex before modifying the balance. Prevents overdrafts
-        by checking balance before withdrawing.
+        Adquiere el mutex antes de modificar el saldo. Previene sobregiros
+        verificando el saldo antes de retirar.
         
-        Args:
-            amount (float): Amount to withdraw (must be positive)
-            description (str): Optional description of the withdrawal
+        Argumentos:
+            amount (float): Cantidad a retirar (debe ser positiva)
+            description (str): Descripción opcional del retiro
             
-        Returns:
-            bool: True if successful, False if insufficient funds or invalid amount
+        Retorna:
+            bool: Verdadero si es exitoso, Falso si fondos insuficientes o cantidad inválida
             
-        Raises:
-            ValueError: If amount is negative or zero
+        Levanta:
+            ValueError: Si la cantidad es negativa o cero
         """
         if amount <= 0:
-            raise ValueError(f"Withdrawal amount must be positive, got {amount}")
+            raise ValueError(f"La cantidad de retiro debe ser positiva, se recibió {amount}")
         
         with self._lock:
             if self.balance < amount:
@@ -108,12 +108,12 @@ class Account:
     
     def get_balance(self) -> float:
         """
-        Get the current account balance (thread-safe).
+        Obtiene el saldo actual de la cuenta (seguro para hilos).
         
-        Acquires the mutex to ensure a consistent snapshot of the balance.
+        Adquiere el mutex para asegurar una instantánea consistente del saldo.
         
-        Returns:
-            float: Current balance
+        Retorna:
+            float: Saldo actual
         """
         with self._lock:
             return self.balance
@@ -122,20 +122,20 @@ class Account:
     def transfer_internal(self, amount: float, source_id: str, 
                          description: str = "Transfer") -> bool:
         """
-        Internal method to execute the balance change during transfer.
+        Método interno para ejecutar el cambio de saldo durante la transferencia.
         
-        Must be called while the account's lock is already held by the caller.
-        Used by TransactionEngine after acquiring all necessary locks.
+        Debe ser invocado mientras el bloqueo de la cuenta ya está retenido por el invocador.
+        Utilizado por TransactionEngine después de adquirir todos los bloqueos necesarios.
         
-        Args:
-            amount (float): Amount to debit or credit
-            source_id (str): Source account ID (for outgoing transfer)
-            description (str): Description of the transfer
+        Argumentos:
+            amount (float): Cantidad a debitar o acreditar
+            source_id (str): Identificador de la cuenta origen (para transferencia saliente)
+            description (str): Descripción de la transferencia
             
-        Returns:
-            bool: True if successful
+        Retorna:
+            bool: Verdadero si es exitoso
         """
-        self.balance += amount  # amount is negative for outgoing, positive for incoming
+        self.balance += amount  # amount es negativo para saliente, positivo para entrante
         self._transaction_history.append({
             'type': 'TRANSFER',
             'amount': abs(amount),
@@ -150,15 +150,15 @@ class Account:
     
     def can_transfer(self, amount: float) -> bool:
         """
-        Check if account has sufficient funds for transfer (thread-safe).
+        Verifica si la cuenta tiene fondos suficientes para la transferencia (seguro para hilos).
         
-        Acquires the mutex to ensure consistent balance check.
+        Adquiere el mutex para asegurar una verificación consistente del saldo.
         
-        Args:
-            amount (float): Amount to check for transfer
+        Argumentos:
+            amount (float): Cantidad a verificar para la transferencia
             
-        Returns:
-            bool: True if sufficient funds available
+        Retorna:
+            bool: Verdadero si hay fondos suficientes disponibles
         """
         if amount <= 0:
             return False
@@ -168,27 +168,27 @@ class Account:
     
     def get_transaction_history(self) -> list:
         """
-        Retrieve the complete transaction history (thread-safe).
+        Recupera el historial completo de transacciones (seguro para hilos).
         
-        Returns:
-            list: Copy of transaction history to avoid external mutations
+        Retorna:
+            list: Copia del historial de transacciones para evitar mutaciones externas
         """
         with self._lock:
             return self._transaction_history.copy()
     
     def acquire_lock(self):
-        """Acquire the account's lock for external synchronization."""
+        """Adquiere el bloqueo de la cuenta para sincronización externa."""
         self._lock.acquire()
 
     def release_lock(self):
-        """Release the account's lock for external synchronization."""
+        """Libera el bloqueo de la cuenta para sincronización externa."""
         self._lock.release()
 
     def __repr__(self) -> str:
-        """String representation of the account."""
+        """Representación en cadena de la cuenta."""
         return (f"Account(id={self.account_id}, holder={self.holder_name}, "
                 f"balance=${self.balance:.2f})")
     
     def __str__(self) -> str:
-        """Readable string representation."""
+        """Representación legible en cadena."""
         return f"[{self.account_id}] {self.holder_name}: ${self.balance:.2f}"

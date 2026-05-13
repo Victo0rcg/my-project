@@ -1,15 +1,16 @@
 """
-Module 1: Transaction Engine
-Implements a producer-consumer pattern for concurrent transaction processing
-with thread-safe queue management and semaphore-based concurrency control.
+Módulo 1: Motor de Transacciones
+Implementa un patrón productor-consumidor para el procesamiento concurrente de transacciones
+con gestión de colas seguras para hilos y control de concurrencia basado en semáforos.
 """
 
 import logging
 import threading
 import queue
+import random
 from typing import Dict, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass
-from .transaction import (Transaction, TransactionType, TransactionStatus)
+from .transaction import (Transaction, TransactionType)
 
 if TYPE_CHECKING:
     from .account import Account
@@ -17,36 +18,36 @@ if TYPE_CHECKING:
 
 class TransactionEngine:
     """
-    Producer-consumer engine for processing concurrent transactions.
+    Motor productor-consumidor para el procesamiento de transacciones concurrentes.
     
-    Manages a thread-safe queue of transactions with semaphore-based concurrency
-    control. Coordinates between transaction producers (application threads) and
-    consumers (worker threads that execute transactions against accounts).
+    Gestiona una cola de transacciones segura para hilos con control de concurrencia
+    basado en semáforos. Coordina entre productores de transacciones (hilos de aplicación) y
+    consumidores (hilos trabajadores que ejecutan transacciones contra cuentas).
     
-    Attributes:
-        _transaction_queue (queue.Queue): Thread-safe buffer for pending transactions
-        _result_queue (queue.Queue): Thread-safe buffer for completed transactions
-        _accounts (dict): Dictionary mapping account IDs to Account objects
-        _max_concurrent (int): Maximum concurrent transactions via semaphore
-        _semaphore (threading.Semaphore): Limits concurrent transaction execution
-        _workers (list): List of worker threads
-        _running (bool): Flag to control engine operation
-        _lock (threading.Lock): Protects engine state
-        _transaction_counter (int): Auto-increment counter for transaction IDs
-        _authorization_hook (Callable): Optional RBAC authorization callback
-        _bankers_guard (Callable): Optional deadlock prevention callback
+    Atributos:
+        _transaction_queue (queue.Queue): Búfer seguro para hilos de transacciones pendientes
+        _result_queue (queue.Queue): Búfer seguro para hilos de transacciones completadas
+        _accounts (dict): Diccionario que mapea IDs de cuentas a objetos Account
+        _max_concurrent (int): Máximo de transacciones concurrentes vía semáforo
+        _semaphore (threading.Semaphore): Limita la ejecución de transacciones concurrentes
+        _workers (list): Lista de hilos trabajadores
+        _running (bool): Bandera para controlar la operación del motor
+        _lock (threading.Lock): Protege el estado del motor
+        _transaction_counter (int): Contador auto-incremental para IDs de transacciones
+        _authorization_hook (Callable): Callback opcional de autorización RBAC
+        _bankers_guard (Callable): Callback opcional de prevención de interbloqueo
     """
     
     def __init__(self, accounts: Dict[str, 'Account'], 
                  max_concurrent: int = 5,
                  num_workers: int = 3):
         """
-        Initialize the transaction engine.
+        Inicializa el motor de transacciones.
         
         Args:
-            accounts (dict): Dictionary of Account objects by account_id
-            max_concurrent (int): Maximum concurrent transactions (default: 5)
-            num_workers (int): Number of worker threads (default: 3)
+            accounts (dict): Diccionario de objetos Account por account_id
+            max_concurrent (int): Máximo de transacciones concurrentes (por defecto: 5)
+            num_workers (int): Número de hilos trabajadores (por defecto: 3)
         """
         self._transaction_queue = queue.Queue()
         self._result_queue = queue.Queue()
@@ -63,36 +64,36 @@ class TransactionEngine:
     
     def set_authorization_hook(self, hook: Callable) -> None:
         """
-        Set the RBAC authorization callback.
+        Establece el callback de autorización RBAC.
         
         Args:
-            hook (callable): Function that validates transaction authorization
-                            Signature: hook(transaction: Transaction) -> bool
+            hook (callable): Función que valida la autorización de transacción
+                            Firma: hook(transaction: Transaction) -> bool
         """
         self._authorization_hook = hook
     
     def set_bankers_guard(self, guard: Callable) -> None:
         """
-        Set the deadlock prevention callback (Banker's Algorithm).
+        Establece el callback de prevención de interbloqueo (Algoritmo del Banquero).
         
         Args:
-            guard (callable): Function that validates deadlock-free state
-                             Signature: guard(transaction: Transaction) -> bool
+            guard (callable): Función que valida el estado libre de interbloqueo
+                             Firma: guard(transaction: Transaction) -> bool
         """
         self._bankers_guard = guard
     
     def start(self) -> None:
-        """Start the transaction engine with worker threads."""
+        """Inicia el motor de transacciones con hilos trabajadores."""
         with self._lock:
             if self._running:
                 raise RuntimeError("Engine is already running")
             self._running = True
         
-        # Start worker threads
-        for i in range(len(self._workers), self._num_workers):  # Default 3 workers
+        # Inicia hilos trabajadores
+        for i in range(len(self._workers), self._num_workers):  # Por defecto 3 trabajadores
             worker = threading.Thread(
                 target=self._worker_loop,
-                name=f"TransactionWorker-{i+1}",
+                name=f"TrabajadorTransacción-{i+1}",
                 daemon=True
             )
             worker.start()
@@ -100,19 +101,19 @@ class TransactionEngine:
     
     def stop(self, timeout: float = 5.0) -> None:
         """
-        Stop the transaction engine gracefully.
+        Detiene el motor de transacciones de manera elegante.
         
         Args:
-            timeout (float): Seconds to wait for workers to finish
+            timeout (float): Segundos para esperar a que los trabajadores terminen
         """
         with self._lock:
             self._running = False
         
-        # Signal workers by sending sentinel values
+        # Señala a los trabajadores enviando valores centinela
         for _ in self._workers:
             self._transaction_queue.put(None)
         
-        # Wait for workers to finish
+        # Espera a que los trabajadores terminen
         for worker in self._workers:
             worker.join(timeout=timeout)
         
@@ -120,16 +121,16 @@ class TransactionEngine:
     
     def submit_transaction(self, transaction: Transaction) -> str:
         """
-        Submit a transaction to the engine.
+        Envía una transacción al motor.
         
         Args:
-            transaction (Transaction): The transaction to process
+            transaction (Transaction): La transacción a procesar
             
         Returns:
-            str: The assigned transaction ID
+            str: El ID de transacción asignado
             
         Raises:
-            RuntimeError: If engine is not running
+            RuntimeError: Si el motor no está ejecutándose
         """
         if not self._running:
             raise RuntimeError("Engine is not running")
@@ -138,32 +139,38 @@ class TransactionEngine:
             self._transaction_counter += 1
             transaction.transaction_id = f"T{self._transaction_counter:06d}"
         
-        # Assign fictitious block number for SCAN scheduling
-        import random
+        # Asigna número de bloque ficticio para planificación SCAN
         transaction.block_number = random.randint(0, 100)
         
         self._transaction_queue.put(transaction)
         return transaction.transaction_id
     
     def _worker_loop(self) -> None:
-        """Main worker thread loop (consumer)."""
+        """Bucle principal del hilo trabajador (consumidor)."""
         while True:
             try:
-                # Wait for a transaction with timeout to allow graceful shutdown
+                # Espera una transacción con tiempo de espera para permitir apagado elegante
                 transaction = self._transaction_queue.get(timeout=1.0)
                 
-                # Sentinel value signals shutdown
+                # Valor centinela indica apagado
                 if transaction is None:
                     self._transaction_queue.task_done()
                     break
                 
-                # Mark as authorized
+                # Marca como autorizada
+                if self._authorization_hook:
+                    if not self._authorization_hook(transaction):
+                        transaction.mark_denied("Authorization denied")
+                        self._result_queue.put(transaction)          # enviar a resultados
+                        self._transaction_queue.task_done()
+                        continue                                      # ir a la siguiente tarea
+
                 transaction.mark_authorized()
                 
-                # Acquire semaphore slot before processing
+                # Adquiere ranura de semáforo antes del procesamiento
                 self._semaphore.acquire()
                 try:
-                    # Mark as processing
+                    # Marca como procesando
                     transaction.mark_processing()
                     result = self._process_transaction(transaction)
                     self._result_queue.put(result)
@@ -175,45 +182,45 @@ class TransactionEngine:
             except queue.Empty:
                 continue
             except Exception as e:
-                logging.exception(f"Worker error: {e}")
+                logging.exception(f"Error del trabajador: {e}")
     
     def _process_transaction(self, transaction: Transaction) -> Transaction:
         """
-        Execute a transaction against the account(s).
+        Ejecuta una transacción contra la(s) cuenta(s).
         
-        Applies authorization and deadlock prevention checks before execution.
+        Aplica verificaciones de autorización y prevención de interbloqueo antes de la ejecución.
         
         Args:
-            transaction (Transaction): The transaction to execute
+            transaction (Transaction): La transacción a ejecutar
             
         Returns:
-            Transaction: Updated transaction with status and result
+            Transaction: Transacción actualizada con estado y resultado
         """
         try:
-            # Apply RBAC authorization if hook is set
+            # Aplica autorización RBAC si el hook está establecido
             if self._authorization_hook:
                 if not self._authorization_hook(transaction):
                     transaction.mark_denied("Authorization failed")
                     return transaction
             
-            # Validate accounts exist
+            # Valida que las cuentas existan
             if transaction.source_account_id not in self._accounts:
                 transaction.mark_failed("Source account not found")
                 return transaction
             
             source_account = self._accounts[transaction.source_account_id]
             
-            # Process transaction by type
+            # Procesa la transacción por tipo
             if transaction.transaction_type == TransactionType.DEPOSIT:
                 if source_account.deposit(transaction.amount, 
-                                         f"Deposit by {transaction.user_id}"):
+                                         f"Depósito por {transaction.user_id}"):
                     transaction.mark_completed()
                 else:
                     transaction.mark_failed("Deposit operation failed")
             
             elif transaction.transaction_type == TransactionType.WITHDRAWAL:
                 if source_account.withdraw(transaction.amount,
-                                          f"Withdrawal by {transaction.user_id}"):
+                                          f"Retiro por {transaction.user_id}"):
                     transaction.mark_completed()
                 else:
                     transaction.mark_failed("Withdrawal operation failed")
@@ -229,13 +236,13 @@ class TransactionEngine:
                 
                 dest_account = self._accounts[transaction.destination_account_id]
                 
-                # Apply Banker's Algorithm if guard is set
+                # Aplica el Algoritmo del Banquero si el guard está establecido
                 if self._bankers_guard:
                     if not self._bankers_guard(transaction):
                         transaction.mark_denied("Banker's Algorithm check failed")
                         return transaction
                 
-                # Execute transfer with ordered locking to prevent deadlock
+                # Ejecuta transferencia con bloqueo ordenado para prevenir interbloqueo
                 if self._execute_transfer(source_account, dest_account, 
                                         transaction.amount,
                                         transaction.source_account_id,
@@ -245,7 +252,7 @@ class TransactionEngine:
                     transaction.mark_failed("Transfer operation failed")
             
             elif transaction.transaction_type == TransactionType.QUERY:
-                # Query operations don't modify state, always succeed
+                # Las operaciones de consulta no modifican el estado, siempre tienen éxito
                 transaction.metadata['balance'] = source_account.get_balance()
                 transaction.mark_completed()
             
@@ -258,8 +265,8 @@ class TransactionEngine:
             transaction.mark_failed(f"Validation error: {str(e)}")
             return transaction
         except Exception as e:
-            logging.exception(f"Transaction {transaction.transaction_id} error: {e}")
-            transaction.mark_failed(f"Exception: {str(e)}")
+            logging.exception(f"Error en transacción {transaction.transaction_id}: {e}")
+            transaction.mark_failed(f"Excepción: {str(e)}")
             return transaction
     
     def _execute_transfer(self, source_account: 'Account', 
@@ -268,42 +275,38 @@ class TransactionEngine:
                          source_id: str,
                          dest_id: str) -> bool:
         """
-        Execute a transfer between two accounts with ordered locking.
+        Ejecuta una transferencia entre dos cuentas con bloqueo ordenado.
         
-        Manages synchronization orchestration for transfer operations.
-        Acquires locks in account ID order to prevent circular wait deadlock.
-        Performs: verify balance -> debit source -> credit destination
+        Gestiona la orquestación de sincronización para operaciones de transferencia.
+        Adquiere bloqueos en orden de ID de cuenta para prevenir interbloqueo de espera circular.
+        Realiza: verificar saldo -> debitar fuente -> acreditar destino
         
         Args:
-            source_account (Account): Source account object
-            dest_account (Account): Destination account object
-            amount (float): Amount to transfer
-            source_id (str): Source account ID
-            dest_id (str): Destination account ID
+            source_account (Account): Objeto de cuenta fuente
+            dest_account (Account): Objeto de cuenta destino
+            amount (float): Cantidad a transferir
+            source_id (str): ID de cuenta fuente
+            dest_id (str): ID de cuenta destino
             
         Returns:
-            bool: True if transfer succeeded, False otherwise
+            bool: True si la transferencia tuvo éxito, False en caso contrario
         """
-        # Order locks by account ID to prevent deadlock
         if source_id < dest_id:
             first_account, second_account = source_account, dest_account
         else:
             first_account, second_account = dest_account, source_account
         
-        # Acquire locks in order
         first_account.acquire_lock()
         try:
             second_account.acquire_lock()
             try:
-                # Verify balance
-                if source_account.get_balance() < amount:
+                # Accede al saldo directamente — los bloqueos ya están retenidos, NO llames a get_balance()
+                if source_account.balance < amount:
                     return False
                 
-                # Debit source account
-                source_account.transfer_internal(amount, is_debit=True)
-                
-                # Credit destination account
-                dest_account.transfer_internal(amount, is_debit=False)
+                # Usa la firma correcta de transfer_internal: (amount, source_id, description)
+                source_account.transfer_internal(-amount, dest_id, f"Transferencia a {dest_id}")
+                dest_account.transfer_internal(amount, source_id, f"Transferencia desde {source_id}")
                 
                 return True
             finally:
@@ -312,18 +315,18 @@ class TransactionEngine:
             first_account.release_lock()
     
     def get_pending_count(self) -> int:
-        """Get count of pending transactions in queue."""
+        """Obtiene el conteo de transacciones pendientes en la cola."""
         return self._transaction_queue.qsize()
     
     def get_result(self, timeout: float = 1.0) -> Optional[Transaction]:
         """
-        Retrieve a completed transaction from results queue.
+        Recupera una transacción completada de la cola de resultados.
         
         Args:
-            timeout (float): Seconds to wait for a result
+            timeout (float): Segundos para esperar un resultado
             
         Returns:
-            Transaction or None if timeout
+            Transaction o None si tiempo de espera
         """
         try:
             return self._result_queue.get(timeout=timeout)
@@ -332,10 +335,10 @@ class TransactionEngine:
     
     def get_all_results(self) -> list:
         """
-        Retrieve all completed transactions from results queue.
+        Recupera todas las transacciones completadas de la cola de resultados.
         
         Returns:
-            list: All available completed transactions
+            list: Todas las transacciones completadas disponibles
         """
         results = []
         while True:
@@ -348,10 +351,10 @@ class TransactionEngine:
     
     def wait_completion(self):
         """
-        Wait for all pending transactions to complete.
+        Espera a que todas las transacciones pendientes se completen.
                    
         Returns:
-            bool: True if all completed, False if timeout
+            bool: True si todas se completaron, False si tiempo de espera
         """
         self._transaction_queue.join()
         return True
