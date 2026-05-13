@@ -4,13 +4,7 @@
 **Institución:** Universidad Tecnológica de Pereira  
 **Docente:** Juan Andrés García Moreno  
 **Período:** 2026-1  
-**Equipo:**
-
-| Integrante | Módulo principal |
-|---|---|
-| Victor Correa | `core/` — Motor de cuentas y transacciones |
-| Ivanna Ramírez | `scheduling/` — Planificador SCAN |
-| Santiago Jaramillo | `security/` y `concurrency/` — RBAC y Banquero |
+**Equipo:** 5
 
 ---
 
@@ -219,11 +213,8 @@ banco-transacciones-so/
 │   └── bankers_guard.py           # Clase GuardiaBanquero
 │
 ├── logs/
-│   └── transactions.log           # Generado en tiempo de ejecución
-│
-└── tests/
-    ├── __init__.py
-    └── test_transaction.py        # Suite de pruebas unitarias y de concurrencia
+    └── transactions.log
+    └── system.log           # Generados en tiempo de ejecución
 ```
 
 ---
@@ -858,40 +849,8 @@ Python 3.10 o superior.
 | `random` | Estándar | Asignación de `block_number` en `submit_transaction` |
 | `datetime` | Estándar | Timestamps en historial de cuentas y metadata de transacciones |
 | `typing` | Estándar | Anotaciones de tipo (`Optional`, `Callable`, `Dict`) |
-| `pytest` | Externa | Suite de pruebas unitarias, de integración y de concurrencia |
 
-### Instalación de dependencias
-
-```bash
-pip install pytest
-```
-
----
-
-## 14. Instalación y ejecución
-
-### Requisitos previos
-
-```bash
-python --version   # 3.10 o superior
-git --version
-```
-
-### Instalación
-
-```bash
-# 1. Clonar el repositorio
-git clone https://github.com/usuario/banco-transacciones-so.git
-cd banco-transacciones-so
-
-# 2. Crear y activar el entorno virtual
-python -m venv venv
-source venv/bin/activate        # Linux / macOS
-venv\Scripts\activate           # Windows
-
-# 3. Instalar dependencias
-pip install -r requirements.txt
-```
+## 14. Ejecución y Flujo de Trabajo
 
 ### Ejecución
 
@@ -899,34 +858,9 @@ pip install -r requirements.txt
 # Simulación completa
 python main.py
 
-# Suite de pruebas completa
-pytest tests/ -v
-
-# Pruebas filtradas por categoría
-pytest tests/ -v -k "TestAccount"
-pytest tests/ -v -k "Concurrency"
-pytest tests/ -v -k "Integration"
-pytest tests/ -v -k "Stress or RaceCondition"
 ```
 
-### Flujo de trabajo con Git
-
-```bash
-# Ramas del proyecto
-main                         ← siempre estable
-├── feature/modulo-cuentas   ← Victor
-├── feature/modulo-scan      ← Ivanna
-├── feature/modulo-rbac      ← Santiago
-├── feature/modulo-banquero  ← Santiago
-└── feature/integracion      ← todos (semana 3)
-
-# Ciclo diario
-git checkout feature/mi-rama
-git add .
-git commit -m "feat: descripción del cambio"
-git push origin feature/mi-rama
-# → Pull Request → revisión de compañero → merge a main
-```
+### Flujo de Trabajo con Git
 
 | Prefijo de commit | Uso |
 |---|---|
@@ -938,25 +872,7 @@ git push origin feature/mi-rama
 
 ---
 
-## 15. Pruebas
-
-La suite de pruebas cubre cinco niveles:
-
-| Clase de prueba | Cobertura |
-|---|---|
-| `TestTransactionType` / `TestTransactionStatus` | Existencia y valores de los enums |
-| `TestTransaction` | Ciclo de vida, validaciones y serialización |
-| `TestTransactionBuilder` | Interfaz fluida, `transaction_id` es `None` antes del motor, el motor lo asigna |
-| `TestAccount` | Operaciones atómicas, historial, lock explícito |
-| `TestAccountConcurrency` | 10 hilos × 100 operaciones; verifica consistencia del saldo final |
-| `TestTransactionEngineConcurrency` | Unicidad de IDs bajo carga; medición del límite del semáforo |
-| `TestTransactionEngineIntegration` | Flujo completo por cada tipo de transacción, incluyendo casos de error |
-| `TestStress` | 500–1000 transacciones con 10–20 workers; al menos 95% completadas |
-| `TestRaceConditions` | Transferencias circulares, conservación total del dinero |
-
----
-
-## 16. Salida esperada del sistema
+## 15. Salida Esperada del Sistema
 
 ```
 ========================================================
