@@ -28,14 +28,13 @@
 11. [Planificación SCAN aplicada al logging](#11-planificación-scan-aplicada-al-logging)
 12. [Manejo de interrupciones y señales](#12-manejo-de-interrupciones-y-señales)
 13. [Especificaciones técnicas](#13-especificaciones-técnicas)
-14. [Instalación y ejecución](#14-instalación-y-ejecución)
-15. [Pruebas](#15-pruebas)
-16. [Salida esperada del sistema](#16-salida-esperada-del-sistema)
-17. [Referencias](#17-referencias)
+14. [Ejecución y Flujo de Trabajo](#14-instalación-y-ejecución)
+15. [Salida esperada del sistema](#15-salida-esperada-del-sistema)
+16. [Referencias](#16-referencias)
 
 ---
 
-## 1. Descripción general
+## 1. Descripción General
 
 Este proyecto implementa un **simulador de procesador de transacciones bancarias** que demuestra de forma práctica cuatro conceptos fundamentales de los sistemas operativos: sincronización con exclusión mutua, planificación de disco, control de acceso basado en roles y prevención de interbloqueos.
 
@@ -61,7 +60,7 @@ Desarrollar un simulador de procesador de transacciones bancarias en Python que 
 
 ---
 
-## 3. Marco conceptual
+## 3. Marco Conceptual
 
 ### 3.1 Condición de carrera y sección crítica
 
@@ -109,7 +108,7 @@ Ante una solicitud, el algoritmo simula la asignación, verifica si el nuevo est
 
 ---
 
-## 4. Arquitectura del sistema
+## 4. Arquitectura del Sistema
 
 El sistema se organiza en cuatro capas funcionales que se integran a través del orquestador `main.py`:
 
@@ -183,7 +182,7 @@ Productor (hilo de app)
 
 ---
 
-## 5. Estructura del proyecto
+## 5. Estructura del Proyecto
 
 ```
 banco-transacciones-so/
@@ -219,7 +218,7 @@ banco-transacciones-so/
 
 ---
 
-## 6. Módulos y arquitectura de clases
+## 6. Módulos y Arquitectura de Clases
 
 ### 6.1 `core/` — Motor de cuentas y transacciones
 
@@ -599,7 +598,7 @@ Recolecta los `block_number` de los resultados, invoca `scan_scheduling()` para 
 
 ---
 
-## 7. Flujo de ejecución detallado
+## 7. Flujo de Ejecución
 
 El siguiente macroalgoritmo describe la ejecución completa del sistema:
 
@@ -678,7 +677,7 @@ FIN
 
 ---
 
-## 8. Mecanismos de sincronización
+## 8. Mecanismos de Sincronización
 
 El sistema usa tres primitivas de sincronización distintas, cada una para un propósito específico:
 
@@ -706,7 +705,7 @@ El `_lock` interno del motor protege el `_transaction_counter` y el flag `_runni
 
 ---
 
-## 9. Prevención de interbloqueos
+## 9. Prevención de Interbloqueos
 
 El sistema emplea dos estrategias complementarias de prevención de interbloqueos:
 
@@ -722,7 +721,7 @@ Ambas estrategias son complementarias: el locking ordenado actúa en el nivel de
 
 ---
 
-## 10. Modelo de permisos y dominios
+## 10. Modelo de Permisos y Dominios
 
 El modelo RBAC implementado sigue el estándar NIST RBAC Nivel 1 (*Flat RBAC*): roles planos sin jerarquía ni herencia. Cada usuario tiene exactamente un rol asignado en el campo `user_role` de la transacción.
 
@@ -759,13 +758,13 @@ PoliticaRBAC.verificar_permiso(rol, operacion)
                             _result_queue.put(txn)
 ```
 
-### Tratamiento de violaciones
+### Tratamiento de Violaciones
 
 Cuando se detecta una violación de dominio, `PoliticaRBAC` registra el evento como `logging.ERROR` (auditoría) y lanza `PermissionError`. El hook captura esta excepción y retorna `False` al worker, quien marca la transacción como `DENIED` sin ejecutar ninguna operación sobre las cuentas. La transacción denegada se envía igualmente al `_result_queue` para que quede registrada en el log SCAN.
 
 ---
 
-## 11. Planificación SCAN aplicada al logging
+## 11. Planificación SCAN Aplicada al Logging
 
 ### Modelado del problema
 
@@ -802,7 +801,7 @@ Con 6 transacciones en bloques `[70, 10, 90, 30, 60, 20]` y cabezal en 0 direcci
 
 ---
 
-## 12. Manejo de interrupciones y señales
+## 12. Manejo de Interrupciones y Señales
 
 El sistema implementa tres formas de manejo de interrupciones:
 
@@ -831,7 +830,7 @@ Las violaciones de RBAC (`PermissionError`) y los rechazos del Banquero interrum
 
 ---
 
-## 13. Especificaciones técnicas
+## 13. Especificaciones Técnicas
 
 ### Lenguaje y versión
 
