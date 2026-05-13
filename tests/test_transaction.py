@@ -63,7 +63,6 @@ class TestTransaction:
     def valid_transaction(self):
         """Create a valid deposit transaction."""
         return Transaction(
-            transaction_id="T000001",
             transaction_type=TransactionType.DEPOSIT,
             source_account_id="ACC001",
             amount=100.0,
@@ -73,7 +72,6 @@ class TestTransaction:
     
     def test_transaction_creation(self, valid_transaction):
         """Test basic transaction creation."""
-        assert valid_transaction.transaction_id == "T000001"
         assert valid_transaction.transaction_type == TransactionType.DEPOSIT
         assert valid_transaction.source_account_id == "ACC001"
         assert valid_transaction.amount == 100.0
@@ -82,7 +80,6 @@ class TestTransaction:
     def test_transaction_timestamp_auto_set(self):
         """Test that timestamp is auto-set if not provided."""
         txn = Transaction(
-            transaction_id="T000001",
             transaction_type=TransactionType.DEPOSIT,
             source_account_id="ACC001",
             amount=50.0,
@@ -96,7 +93,6 @@ class TestTransaction:
         """Test validation rejects negative amounts."""
         with pytest.raises(ValueError, match="must be positive"):
             Transaction(
-                transaction_id="T000001",
                 transaction_type=TransactionType.DEPOSIT,
                 source_account_id="ACC001",
                 amount=-100.0,
@@ -108,7 +104,6 @@ class TestTransaction:
         """Test validation rejects zero amounts."""
         with pytest.raises(ValueError, match="must be positive"):
             Transaction(
-                transaction_id="T000001",
                 transaction_type=TransactionType.DEPOSIT,
                 source_account_id="ACC001",
                 amount=0.0,
@@ -119,7 +114,6 @@ class TestTransaction:
     def test_transaction_query_accepts_zero_amount(self):
         """Test that query transactions accept zero amount."""
         txn = Transaction(
-            transaction_id="T000001",
             transaction_type=TransactionType.QUERY,
             source_account_id="ACC001",
             amount=0.0,
@@ -132,7 +126,6 @@ class TestTransaction:
         """Test validation requires destination for transfers."""
         with pytest.raises(ValueError, match="destination_account_id"):
             Transaction(
-                transaction_id="T000001",
                 transaction_type=TransactionType.TRANSFER,
                 source_account_id="ACC001",
                 destination_account_id=None,
@@ -145,7 +138,6 @@ class TestTransaction:
         """Test validation rejects same source and destination."""
         with pytest.raises(ValueError, match="cannot be the same"):
             Transaction(
-                transaction_id="T000001",
                 transaction_type=TransactionType.TRANSFER,
                 source_account_id="ACC001",
                 destination_account_id="ACC001",
@@ -187,7 +179,6 @@ class TestTransaction:
     def test_get_operation_summary_deposit(self):
         """Test operation summary for deposit."""
         txn = Transaction(
-            transaction_id="T000001",
             transaction_type=TransactionType.DEPOSIT,
             source_account_id="ACC001",
             amount=100.0,
@@ -201,7 +192,6 @@ class TestTransaction:
     def test_get_operation_summary_transfer(self):
         """Test operation summary for transfer."""
         txn = Transaction(
-            transaction_id="T000001",
             transaction_type=TransactionType.TRANSFER,
             source_account_id="ACC001",
             destination_account_id="ACC002",
@@ -217,7 +207,6 @@ class TestTransaction:
     def test_get_affected_accounts_single(self):
         """Test getting affected accounts for single-account transaction."""
         txn = Transaction(
-            transaction_id="T000001",
             transaction_type=TransactionType.DEPOSIT,
             source_account_id="ACC001",
             amount=100.0,
@@ -230,7 +219,6 @@ class TestTransaction:
     def test_get_affected_accounts_multi(self):
         """Test getting affected accounts for multi-account transaction."""
         txn = Transaction(
-            transaction_id="T000001",
             transaction_type=TransactionType.TRANSFER,
             source_account_id="ACC001",
             destination_account_id="ACC002",
@@ -246,7 +234,6 @@ class TestTransaction:
     def test_is_multi_account(self):
         """Test multi-account transaction detection."""
         txn_single = Transaction(
-            transaction_id="T000001",
             transaction_type=TransactionType.DEPOSIT,
             source_account_id="ACC001",
             amount=100.0,
@@ -256,7 +243,6 @@ class TestTransaction:
         assert not txn_single.is_multi_account()
         
         txn_multi = Transaction(
-            transaction_id="T000002",
             transaction_type=TransactionType.TRANSFER,
             source_account_id="ACC001",
             destination_account_id="ACC002",
@@ -269,7 +255,6 @@ class TestTransaction:
     def test_requires_authorization(self):
         """Test authorization requirement detection."""
         txn_query = Transaction(
-            transaction_id="T000001",
             transaction_type=TransactionType.QUERY,
             source_account_id="ACC001",
             amount=0.0,
@@ -279,7 +264,6 @@ class TestTransaction:
         assert not txn_query.requires_authorization()
         
         txn_deposit = Transaction(
-            transaction_id="T000002",
             transaction_type=TransactionType.DEPOSIT,
             source_account_id="ACC001",
             amount=100.0,
@@ -291,7 +275,6 @@ class TestTransaction:
     def test_transaction_to_dict(self, valid_transaction):
         """Test transaction serialization to dict."""
         data = valid_transaction.to_dict()
-        assert data['transaction_id'] == "T000001"
         assert data['transaction_type'] == "DEPOSIT"
         assert data['amount'] == 100.0
         assert isinstance(data['timestamp'], str)
@@ -318,22 +301,30 @@ class TestTransaction:
         assert isinstance(txn.timestamp, datetime)
 
 
+# ==================== BUILDER TESTS ====================
+
 class TestTransactionBuilder:
-    """Unit tests for TransactionBuilder."""
+    """Unit tests for TransactionBuilder.
+    
+    The builder does NOT accept a transaction_id — the engine is solely
+    responsible for assigning IDs at submission time.
+    """
     
     def test_builder_deposit(self):
         """Test building a deposit transaction."""
-        builder = TransactionBuilder("T000001", "user1", "CUSTOMER")
+        # Option A: builder only takes user_id and user_role
+        builder = TransactionBuilder("user1", "CUSTOMER")
         txn = builder.with_deposit("ACC001", 100.0).build()
         
         assert txn.transaction_type == TransactionType.DEPOSIT
         assert txn.source_account_id == "ACC001"
         assert txn.amount == 100.0
         assert txn.user_id == "user1"
+        assert txn.user_role == "CUSTOMER"
     
     def test_builder_withdrawal(self):
         """Test building a withdrawal transaction."""
-        builder = TransactionBuilder("T000001", "user1", "CUSTOMER")
+        builder = TransactionBuilder("user1", "CUSTOMER")
         txn = builder.with_withdrawal("ACC001", 50.0).build()
         
         assert txn.transaction_type == TransactionType.WITHDRAWAL
@@ -342,7 +333,7 @@ class TestTransactionBuilder:
     
     def test_builder_transfer(self):
         """Test building a transfer transaction."""
-        builder = TransactionBuilder("T000001", "user1", "CUSTOMER")
+        builder = TransactionBuilder("user1", "CUSTOMER")
         txn = builder.with_transfer("ACC001", "ACC002", 75.0).build()
         
         assert txn.transaction_type == TransactionType.TRANSFER
@@ -352,7 +343,7 @@ class TestTransactionBuilder:
     
     def test_builder_query(self):
         """Test building a query transaction."""
-        builder = TransactionBuilder("T000001", "user1", "CUSTOMER")
+        builder = TransactionBuilder("user1", "CUSTOMER")
         txn = builder.with_query("ACC001").build()
         
         assert txn.transaction_type == TransactionType.QUERY
@@ -360,27 +351,60 @@ class TestTransactionBuilder:
     
     def test_builder_with_metadata(self):
         """Test adding metadata to transaction."""
-        builder = TransactionBuilder("T000001", "user1", "CUSTOMER")
-        txn = builder.with_deposit("ACC001", 100.0) \
-                     .with_metadata("source", "mobile_app") \
-                     .build()
+        builder = TransactionBuilder("user1", "CUSTOMER")
+        txn = (builder.with_deposit("ACC001", 100.0)
+                      .with_metadata("source", "mobile_app")
+                      .build())
         
         assert txn.metadata['source'] == "mobile_app"
     
+    def test_builder_with_block_number(self):
+        """Test setting a block number for SCAN scheduling."""
+        builder = TransactionBuilder("user1", "CUSTOMER")
+        txn = (builder.with_deposit("ACC001", 100.0)
+                      .with_block_number(42)
+                      .build())
+        
+        assert txn.block_number == 42
+    
     def test_builder_missing_type(self):
-        """Test builder fails without transaction type."""
-        builder = TransactionBuilder("T000001", "user1", "CUSTOMER")
+        """Test builder raises if no transaction type was set."""
+        builder = TransactionBuilder("user1", "CUSTOMER")
         with pytest.raises(ValueError, match="Transaction type must be set"):
             builder.build()
     
     def test_builder_missing_amount(self):
-        """Test builder fails without amount for non-query transactions."""
-        builder = TransactionBuilder("T000001", "user1", "CUSTOMER")
+        """Test builder raises if amount is missing for non-query transactions."""
+        builder = TransactionBuilder("user1", "CUSTOMER")
         builder._transaction_type = TransactionType.DEPOSIT
         builder._source_account_id = "ACC001"
         with pytest.raises(ValueError, match="Amount must be set"):
             builder.build()
+    
+    def test_builder_id_is_none_before_engine(self):
+        """Test that transaction_id is None before submission to the engine."""
+        builder = TransactionBuilder("user1", "CUSTOMER")
+        txn = builder.with_deposit("ACC001", 200.0).build()
+        # Engine hasn't assigned an ID yet
+        assert txn.transaction_id is None
+    
+    def test_engine_assigns_id_on_submit(self):
+        """Test that the engine (not the builder) assigns the transaction ID."""
+        accounts = {"ACC001": Account("ACC001", "Alice", 1000.0)}
+        engine = TransactionEngine(accounts, max_concurrent=2, num_workers=1)
+        engine.start()
+        try:
+            txn = TransactionBuilder("user1", "CUSTOMER").with_deposit("ACC001", 50.0).build()
+            assert txn.transaction_id is None  # not yet assigned
+            
+            txn_id = engine.submit_transaction(txn)
+            assert txn_id.startswith("T")
+            assert txn.transaction_id == txn_id  # engine assigned it
+        finally:
+            engine.stop()
 
+
+# ==================== ACCOUNT UNIT TESTS ====================
 
 class TestAccount:
     """Unit tests for Account."""
@@ -496,7 +520,6 @@ class TestAccountConcurrency:
         for t in threads:
             t.join()
         
-        # Check final balance is consistent
         assert account.balance >= 0
         assert account.balance + (len(successful_withdrawals) * withdrawal_amount) <= 10000.0 + 1.0
     
@@ -526,7 +549,6 @@ class TestAccountConcurrency:
         for t in threads:
             t.join()
         
-        # Calculate expected balance
         expected = 5000.0
         for op_type, amount, success in operations:
             if op_type == 'deposit':
@@ -562,7 +584,6 @@ class TestTransactionEngineConcurrency:
         def submit_transactions():
             for i in range(10):
                 txn = Transaction(
-                    transaction_id="",
                     transaction_type=TransactionType.DEPOSIT,
                     source_account_id="ACC001",
                     amount=10.0,
@@ -580,6 +601,8 @@ class TestTransactionEngineConcurrency:
             t.join()
         
         assert len(submitted) == 50
+        # All IDs must be unique — the engine counter must be thread-safe
+        assert len(set(submitted)) == 50
         engine.wait_completion()
         results = engine.get_all_results()
         assert len(results) > 0
@@ -610,10 +633,8 @@ class TestTransactionEngineConcurrency:
         
         engine._process_transaction = tracked_process
         
-        # Submit more transactions than max_concurrent
         for i in range(20):
             txn = Transaction(
-                transaction_id="",
                 transaction_type=TransactionType.QUERY,
                 source_account_id="ACC001",
                 amount=0.0,
@@ -623,8 +644,6 @@ class TestTransactionEngineConcurrency:
             engine.submit_transaction(txn)
         
         engine.wait_completion()
-        
-        # The max observed should not exceed max_concurrent by much
         assert max_observed[0] <= max_concurrent + 1
 
 
@@ -649,7 +668,6 @@ class TestTransactionEngineIntegration:
     def test_deposit_transaction_flow(self, engine):
         """Test complete deposit transaction flow."""
         txn = Transaction(
-            transaction_id="",
             transaction_type=TransactionType.DEPOSIT,
             source_account_id="ACC001",
             amount=500.0,
@@ -670,7 +688,6 @@ class TestTransactionEngineIntegration:
     def test_withdrawal_transaction_flow(self, engine):
         """Test complete withdrawal transaction flow."""
         txn = Transaction(
-            transaction_id="",
             transaction_type=TransactionType.WITHDRAWAL,
             source_account_id="ACC001",
             amount=1000.0,
@@ -688,7 +705,6 @@ class TestTransactionEngineIntegration:
     def test_transfer_transaction_flow(self, engine):
         """Test complete transfer transaction flow."""
         txn = Transaction(
-            transaction_id="",
             transaction_type=TransactionType.TRANSFER,
             source_account_id="ACC001",
             destination_account_id="ACC002",
@@ -708,7 +724,6 @@ class TestTransactionEngineIntegration:
     def test_query_transaction_flow(self, engine):
         """Test complete query transaction flow."""
         txn = Transaction(
-            transaction_id="",
             transaction_type=TransactionType.QUERY,
             source_account_id="ACC001",
             amount=0.0,
@@ -726,7 +741,6 @@ class TestTransactionEngineIntegration:
     def test_insufficient_funds_withdrawal(self, engine):
         """Test withdrawal fails with insufficient funds."""
         txn = Transaction(
-            transaction_id="",
             transaction_type=TransactionType.WITHDRAWAL,
             source_account_id="ACC001",
             amount=10000.0,
@@ -742,12 +756,32 @@ class TestTransactionEngineIntegration:
         assert engine._accounts["ACC001"].balance == 5000.0
     
     def test_multiple_transactions_sequence(self, engine):
-        """Test sequence of multiple transactions."""
+        """Test sequence of multiple transactions with keyword arguments."""
+        # Using keyword args because the original dataclass field order is:
+        # source_account_id, amount, user_id, user_role, transaction_type, ...
         transactions = [
-            Transaction("", TransactionType.DEPOSIT, "ACC001", 500.0, "user1", "CUSTOMER"),
-            Transaction("", TransactionType.WITHDRAWAL, "ACC001", 200.0, "user1", "CUSTOMER"),
-            Transaction("", TransactionType.TRANSFER, "ACC001", 300.0, "user1", "CUSTOMER", 
-                       destination_account_id="ACC002"),
+            Transaction(
+                transaction_type=TransactionType.DEPOSIT,
+                source_account_id="ACC001",
+                amount=500.0,
+                user_id="user1",
+                user_role="CUSTOMER"
+            ),
+            Transaction(
+                transaction_type=TransactionType.WITHDRAWAL,
+                source_account_id="ACC001",
+                amount=200.0,
+                user_id="user1",
+                user_role="CUSTOMER"
+            ),
+            Transaction(
+                transaction_type=TransactionType.TRANSFER,
+                source_account_id="ACC001",
+                destination_account_id="ACC002",
+                amount=300.0,
+                user_id="user1",
+                user_role="CUSTOMER"
+            ),
         ]
         
         for txn in transactions:
@@ -759,7 +793,6 @@ class TestTransactionEngineIntegration:
         assert len(results) >= 3
         assert all(r.status == TransactionStatus.COMPLETED for r in results)
         
-        # Verify final balances
         # ACC001: 5000 + 500 - 200 - 300 = 5000
         # ACC002: 5000 + 300 = 5300
         assert engine._accounts["ACC001"].balance == 5000.0
@@ -768,13 +801,11 @@ class TestTransactionEngineIntegration:
     def test_authorization_hook(self, engine):
         """Test transaction authorization hook."""
         def auth_hook(txn):
-            # Deny transactions from "restricted_user"
             return txn.user_id != "restricted_user"
         
         engine.set_authorization_hook(auth_hook)
         
         txn = Transaction(
-            transaction_id="",
             transaction_type=TransactionType.DEPOSIT,
             source_account_id="ACC001",
             amount=100.0,
@@ -787,6 +818,41 @@ class TestTransactionEngineIntegration:
         result = engine.get_result(timeout=2.0)
         
         assert result.status == TransactionStatus.DENIED
+    
+    def test_nonexistent_source_account(self, engine):
+        """Test transaction fails gracefully for unknown source account."""
+        txn = Transaction(
+            transaction_type=TransactionType.DEPOSIT,
+            source_account_id="GHOST999",
+            amount=100.0,
+            user_id="user1",
+            user_role="CUSTOMER"
+        )
+        
+        engine.submit_transaction(txn)
+        engine.wait_completion()
+        result = engine.get_result(timeout=2.0)
+        
+        assert result.status == TransactionStatus.FAILED
+    
+    def test_nonexistent_destination_account(self, engine):
+        """Test transfer fails gracefully for unknown destination account."""
+        txn = Transaction(
+            transaction_type=TransactionType.TRANSFER,
+            source_account_id="ACC001",
+            destination_account_id="GHOST999",
+            amount=100.0,
+            user_id="user1",
+            user_role="CUSTOMER"
+        )
+        
+        engine.submit_transaction(txn)
+        engine.wait_completion()
+        result = engine.get_result(timeout=2.0)
+        
+        assert result.status == TransactionStatus.FAILED
+        # Source balance must be untouched
+        assert engine._accounts["ACC001"].balance == 5000.0
 
 
 # ==================== STRESS TESTS ====================
@@ -809,7 +875,6 @@ class TestStress:
             for i in range(num_transactions):
                 source = f"ACC{i % 10:03d}"
                 txn = Transaction(
-                    transaction_id="",
                     transaction_type=TransactionType.DEPOSIT,
                     source_account_id=source,
                     amount=random.uniform(1.0, 100.0),
@@ -821,7 +886,7 @@ class TestStress:
             engine.wait_completion()
             results = engine.get_all_results()
             
-            assert len(results) >= num_transactions * 0.95  # Allow some failures
+            assert len(results) >= num_transactions * 0.95
             
         finally:
             engine.stop()
@@ -839,7 +904,6 @@ class TestStress:
         try:
             for i in range(100):
                 txn = Transaction(
-                    transaction_id="",
                     transaction_type=TransactionType.DEPOSIT,
                     source_account_id="ACC001",
                     amount=50000.0,
@@ -872,7 +936,6 @@ class TestStress:
                 source = f"ACC{i % 20:03d}"
                 dest = f"ACC{(i + 1) % 20:03d}"
                 txn = Transaction(
-                    transaction_id="",
                     transaction_type=TransactionType.TRANSFER if i % 2 == 0 else TransactionType.DEPOSIT,
                     source_account_id=source,
                     destination_account_id=dest if i % 2 == 0 else None,
@@ -885,7 +948,7 @@ class TestStress:
             engine.wait_completion()
             results = engine.get_all_results()
             
-            assert len(results) >= 900  # At least 90% success
+            assert len(results) >= 900
             
         finally:
             engine.stop()
@@ -907,10 +970,8 @@ class TestRaceConditions:
         engine.start()
         
         try:
-            # Submit many transfers between same accounts concurrently
             for i in range(50):
                 txn = Transaction(
-                    transaction_id="",
                     transaction_type=TransactionType.TRANSFER,
                     source_account_id="ACC001" if i % 2 == 0 else "ACC002",
                     destination_account_id="ACC002" if i % 2 == 0 else "ACC001",
@@ -923,10 +984,9 @@ class TestRaceConditions:
             engine.wait_completion()
             results = engine.get_all_results()
             
-            # All transfers should succeed without deadlock
             assert len(results) >= 45
             
-            # Check total money is conserved (no money created/destroyed)
+            # Total money must be conserved
             total = accounts["ACC001"].balance + accounts["ACC002"].balance
             assert abs(total - 20000.0) < 0.01
             
@@ -945,7 +1005,6 @@ class TestRaceConditions:
         engine.start()
         
         try:
-            # Create circular transfer pattern that could deadlock
             transfers = [
                 ("ACC001", "ACC002", 100.0),
                 ("ACC002", "ACC003", 100.0),
@@ -955,7 +1014,6 @@ class TestRaceConditions:
             for _ in range(20):
                 for source, dest, amount in transfers:
                     txn = Transaction(
-                        transaction_id="",
                         transaction_type=TransactionType.TRANSFER,
                         source_account_id=source,
                         destination_account_id=dest,
@@ -965,11 +1023,14 @@ class TestRaceConditions:
                     )
                     engine.submit_transaction(txn)
             
-            # Should complete without hanging
             engine.wait_completion()
             results = engine.get_all_results()
             
             assert len(results) > 0
+            
+            # Total money across the three accounts must be conserved
+            total = sum(accounts[a].balance for a in ["ACC001", "ACC002", "ACC003"])
+            assert abs(total - 3000.0) < 0.01
             
         finally:
             engine.stop()
@@ -985,7 +1046,6 @@ class TestRaceConditions:
         engine.start()
         
         try:
-            # Mix of operations
             for i in range(200):
                 op_type = random.choice([
                     TransactionType.DEPOSIT,
@@ -999,7 +1059,6 @@ class TestRaceConditions:
                 amount = random.uniform(10.0, 500.0)
                 
                 txn = Transaction(
-                    transaction_id="",
                     transaction_type=op_type,
                     source_account_id=source,
                     destination_account_id=dest if op_type == TransactionType.TRANSFER else None,
@@ -1011,11 +1070,9 @@ class TestRaceConditions:
             
             engine.wait_completion()
             
-            # Verify both accounts have non-negative balances
             assert accounts["ACC001"].balance >= 0
             assert accounts["ACC002"].balance >= 0
             
-            # Verify transaction histories are consistent
             history1 = accounts["ACC001"].get_transaction_history()
             history2 = accounts["ACC002"].get_transaction_history()
             
@@ -1035,11 +1092,9 @@ class TestRaceConditions:
         engine.start()
         
         try:
-            # Submit many transactions as fast as possible
             txn_ids = []
             for i in range(100):
                 txn = Transaction(
-                    transaction_id="",
                     transaction_type=TransactionType.DEPOSIT,
                     source_account_id="ACC001",
                     amount=1.0,
@@ -1049,13 +1104,12 @@ class TestRaceConditions:
                 txn_id = engine.submit_transaction(txn)
                 txn_ids.append(txn_id)
             
-            # All transaction IDs should be unique
+            # All transaction IDs must be unique
             assert len(set(txn_ids)) == 100
             
             engine.wait_completion()
             results = engine.get_all_results()
             
-            # All should complete successfully
             assert len(results) >= 95
             assert accounts["ACC001"].balance >= 10100.0
             
