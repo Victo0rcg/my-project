@@ -4,9 +4,6 @@ class GuardiaBanquero:
     def __init__(self, recursos_disponibles, necesidad_maxima, recursos_asignados):
         """
         Inicializa el estado del sistema para el Algoritmo del Banquero.
-        recursos_disponibles: Lista de recursos disponibles [A, B, C]
-        necesidad_maxima: Matriz de maxima necesidad por proceso
-        recursos_asignados: Matriz de recursos actualmente asignados
         """
         self.recursos_disponibles = recursos_disponibles
         self.necesidad_maxima = necesidad_maxima
