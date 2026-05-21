@@ -15,6 +15,7 @@ de planificación definida.
 import logging
 import threading
 import random
+import os
 
 from core.account import Account
 from core.transaction import Transaction, TransactionType, TransactionBuilder
@@ -29,8 +30,11 @@ from concurrency.bankers_guard import GuardiaBanquero
 # Configuración de logging
 # ---------------------------------------------------------------------------
 
+_LOG_SYSTEM = "banco-transacciones-so/logs/system.log"
+os.makedirs(os.path.dirname(_LOG_SYSTEM), exist_ok=True)
+
 logging.basicConfig(
-    filename="banco-transacciones-so/logs/system.log",
+    filename=_LOG_SYSTEM,
     level=logging.INFO,
     format="%(asctime)s [%(threadName)s] %(message)s",
     datefmt="%H:%M:%S",
@@ -197,6 +201,8 @@ def registrar_resultados_con_scan(resultados: list, archivo_log: str = "banco-tr
     archivo_log : str, opcional
         Ruta del archivo de log en el que se almacenan los resultados.
     """
+    os.makedirs(os.path.dirname(archivo_log), exist_ok=True)
+
     if not resultados:
         logging.info("[SCAN] No hay resultados que registrar.")
         return
