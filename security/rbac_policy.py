@@ -3,7 +3,6 @@ from security.roles import Rol, Operacion
 
 class PoliticaRBAC:
     def __init__(self):
-        # Matriz de Control de Acceso: Define que rol puede hacer que
         self._permisos = {
             Rol.ADMINISTRADOR: [Operacion.DEPOSITO, Operacion.RETIRO, Operacion.TRANSFERENCIA, Operacion.CONSULTA],
             Rol.CAJERO: [Operacion.DEPOSITO, Operacion.RETIRO, Operacion.CONSULTA],
@@ -11,13 +10,10 @@ class PoliticaRBAC:
         }
 
     def verificar_permiso(self, rol_usuario: Rol, operacion_solicitada: Operacion) -> bool:
-        """Verifica si un rol tiene permitido ejecutar una operacion."""
-        logging.info(f"[RBAC] Verificando permisos - Rol: {rol_usuario.name} | Intenta: {operacion_solicitada.name}")
-        
+        logging.info(f"[RBAC] Validando seguridad de archivos para el Rol: '{rol_usuario.name}' -> Operacion: '{operacion_solicitada.name}'")
         operaciones_permitidas = self._permisos.get(rol_usuario, [])
         if operacion_solicitada in operaciones_permitidas:
-            logging.info("[RBAC] Acceso concedido.")
+            logging.info(f"[RBAC] Acceso PERMITIDO al archivo de la cuenta para {rol_usuario.name}.")
             return True
-            
-        logging.error(f"[RBAC] ACCESO DENEGADO: {rol_usuario.name} no tiene privilegios para {operacion_solicitada.name}")
-        raise PermissionError(f"Violacion de dominio de proteccion por el rol {rol_usuario.name}.")
+        logging.warning(f"[RBAC] Acceso DENEGADO al archivo. Privilegios insuficientes para {rol_usuario.name}.")
+        return False
