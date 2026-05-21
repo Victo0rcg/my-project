@@ -10,27 +10,27 @@
 
 ## Tabla de contenidos
 
-1. [Descripción general](#1-descripción-general)
-2. [Objetivos](#2-objetivos)
-3. [Marco conceptual](#3-marco-conceptual)
-4. [Arquitectura del sistema](#4-arquitectura-del-sistema)
-5. [Estructura del proyecto](#5-estructura-del-proyecto)
-6. [Módulos y arquitectura de clases](#6-módulos-y-arquitectura-de-clases)
-   - 6.1 [core — Motor de cuentas y transacciones](#61-core--motor-de-cuentas-y-transacciones)
-   - 6.2 [scheduling — Planificador SCAN](#62-scheduling--planificador-scan)
-   - 6.3 [security — Control de acceso RBAC](#63-security--control-de-acceso-rbac)
-   - 6.4 [concurrency — Algoritmo del Banquero](#64-concurrency--algoritmo-del-banquero)
+1. [Descripción General](#1-Descripción-General)
+2. [Objetivos](#2-Objetivos)
+3. [Marco Conceptual](#3-Marco-Conceptual)
+4. [Arquitectura del Sistema](#4-Arquitectura-del-Sistema)
+5. [Estructura del Proyecto](#5-Estructura-del-Proyecto)
+6. [Módulos y Arquitectura de Clases](#6-Módulos-y-Arquitectura-de-Clases)
+   - 6.1 [Core — Motor de Cuentas y Transacciones](#61-Core--Motor-de-Cuentas-y-Transacciones)
+   - 6.2 [Scheduling — Planificador SCAN](#62-Scheduling--Planificador-SCAN)
+   - 6.3 [Security — Control de acceso RBAC](#63-Security--Control-de-Acceso-RBAC)
+   - 6.4 [Concurrency — Algoritmo del Banquero](#64-Concurrency--Algoritmo-del-Banquero)
    - 6.5 [main.py — Orquestador](#65-mainpy--orquestador)
-7. [Flujo de ejecución detallado](#7-flujo-de-ejecución-detallado)
-8. [Mecanismos de sincronización](#8-mecanismos-de-sincronización)
-9. [Prevención de interbloqueos](#9-prevención-de-interbloqueos)
-10. [Modelo de permisos y dominios](#10-modelo-de-permisos-y-dominios)
-11. [Planificación SCAN aplicada al logging](#11-planificación-scan-aplicada-al-logging)
-12. [Manejo de interrupciones y señales](#12-manejo-de-interrupciones-y-señales)
-13. [Especificaciones técnicas](#13-especificaciones-técnicas)
-14. [Ejecución y Flujo de Trabajo](#14-instalación-y-ejecución)
-15. [Salida esperada del sistema](#15-salida-esperada-del-sistema)
-16. [Referencias](#16-referencias)
+7. [Flujo de Ejecución Eetallado](#7-Flujo-de-Ejecución-Detallado)
+8. [Mecanismos de Sincronización](#8-Mecanismos-de-Sincronización)
+9. [Prevención de Interbloqueos](#9-Prevención-de-Interbloqueos)
+10. [Modelo de Permisos y Dominios](#10-Modelo-de-Permisos-y-Dominios)
+11. [Planificación SCAN Aplicada al Logging](#11-Planificación-scan-Aplicada-al-Logging)
+12. [Manejo de Interrupciones y Señales](#12-Manejo-de-Interrupciones-y-Señales)
+13. [Especificaciones Técnicas](#13-Epecificaciones-Técnicas)
+14. [Ejecución y Flujo de Trabajo](#14-Ejecución-y-Flujo-de-Trabajo)
+15. [Salida Esperada del Sistema](#15-Salida-Esperada-del-Sistema)
+16. [Referencias](#16-Referencias)
 
 ---
 
@@ -46,11 +46,11 @@ Cada transacción atraviesa un ciclo de vida completo: es creada por un producto
 
 ## 2. Objetivos
 
-### Objetivo general
+### Objetivo General
 
 Desarrollar un simulador de procesador de transacciones bancarias en Python que integre mecanismos de sincronización concurrente, planificación de operaciones de disco y control de acceso basado en roles, evidenciando la aplicación práctica de los principios fundamentales de los sistemas operativos.
 
-### Objetivos específicos
+### Objetivos Específicos
 
 - Implementar un modelo de concurrencia con `threading.Thread` y exclusión mutua con `threading.Lock` que garantice la consistencia del saldo de cada cuenta frente a accesos simultáneos de múltiples hilos.
 - Demostrar el patrón productor-consumidor mediante una cola thread-safe (`queue.Queue`) que desacopla la generación de transacciones de su ejecución.
@@ -62,19 +62,19 @@ Desarrollar un simulador de procesador de transacciones bancarias en Python que 
 
 ## 3. Marco Conceptual
 
-### 3.1 Condición de carrera y sección crítica
+### 3.1 Condición de Carrera y Sección Crítica
 
 Una **condición de carrera** (*race condition*) ocurre cuando dos o más hilos acceden concurrentemente a un recurso compartido y el resultado final depende del orden no determinístico de planificación del sistema operativo (Silberschatz et al., 2018). En el contexto bancario, si dos hilos leen el mismo saldo antes de que cualquiera de los dos lo actualice, ambos calcularán el nuevo saldo sobre el valor anterior, produciendo un resultado incorrecto.
 
 La **sección crítica** es el fragmento de código que accede al recurso compartido y que debe ejecutarse de forma atómica. El mecanismo de exclusión mutua garantiza que en todo momento solo un hilo esté dentro de la sección crítica para un recurso dado.
 
-### 3.2 Mutex y semáforo
+### 3.2 Mutex y Semáforo
 
 El **mutex** (`threading.Lock` en Python) es un mecanismo binario de exclusión mutua. Su operación `acquire()` bloquea al hilo si el lock ya está tomado; `release()` lo libera y despierta a un hilo en espera. El uso con la sentencia `with` garantiza la liberación incluso ante excepciones.
 
 El **semáforo** (`threading.Semaphore`) generaliza el mutex permitiendo que hasta *N* hilos accedan simultáneamente a un recurso. En este sistema, un semáforo con valor *max_concurrent* limita el número de transacciones que el motor puede ejecutar en paralelo en un instante dado.
 
-### 3.3 Patrón productor-consumidor
+### 3.3 Patrón Productor-Consumidor
 
 El patrón productor-consumidor desacopla la generación de trabajo (productores) de su ejecución (consumidores) mediante un buffer compartido thread-safe. En este sistema:
 
@@ -88,7 +88,7 @@ El algoritmo SCAN, también conocido como **algoritmo del elevador**, planifica 
 
 En este proyecto, SCAN se aplica al subsistema de logging: cada transacción tiene un `block_number` ficticio (entero entre 0 y 100), y el planificador ordena las entradas de log según la secuencia SCAN antes de escribirlas en disco.
 
-### 3.5 Control de acceso basado en roles (RBAC)
+### 3.5 Control de Acceso Basado en Roles (RBAC)
 
 RBAC (*Role-Based Access Control*) es un modelo de control de acceso estandarizado por el NIST (Ferraiolo et al., 2001) que asigna permisos a roles funcionales en lugar de a usuarios individuales. Un usuario hereda los permisos del rol que tiene asignado. Esto simplifica la administración de políticas de seguridad en sistemas con muchos usuarios.
 
@@ -139,7 +139,7 @@ El sistema se organiza en cuatro capas funcionales que se integran a través del
     └───────────────────────────┘
 ```
 
-### Flujo de datos entre capas
+### Flujo de Datos entre Capas
 
 ```
 Productor (hilo de app)
@@ -220,7 +220,7 @@ banco-transacciones-so/
 
 ## 6. Módulos y Arquitectura de Clases
 
-### 6.1 `core/` — Motor de cuentas y transacciones
+### 6.1 `Core/` — Motor de Cuentas y Transacciones
 
 #### Clase `Account` (`core/account.py`)
 
@@ -432,7 +432,7 @@ Con este ordenamiento, dos hilos que intenten transferir entre las mismas cuenta
 
 ---
 
-### 6.2 `scheduling/` — Planificador SCAN
+### 6.2 `Scheduling/` — Planificador SCAN
 
 #### Función `scan_scheduling` (`scheduling/scan_scheduler.py`)
 
@@ -475,7 +475,7 @@ Orden SCAN: [60, 70, 90, 30, 20, 10]
 
 ---
 
-### 6.3 `security/` — Control de acceso RBAC
+### 6.3 `Security/` — Control de acceso RBAC
 
 #### Enumeraciones `Rol` y `Operacion` (`security/roles.py`)
 
@@ -514,7 +514,7 @@ Implementa la matriz de control de acceso. Es el único lugar del sistema donde 
 
 ---
 
-### 6.4 `concurrency/` — Algoritmo del Banquero
+### 6.4 `Concurrency/` — Algoritmo del Banquero
 
 #### Clase `GuardiaBanquero` (`concurrency/bankers_guard.py`)
 
@@ -782,7 +782,7 @@ para bloque en orden_scan:
     todas las transacciones con ese block_number
 ```
 
-### Beneficio demostrado
+### Beneficio Demostrado
 
 Con 6 transacciones en bloques `[70, 10, 90, 30, 60, 20]` y cabezal en 0 dirección `up`:
 
@@ -791,7 +791,7 @@ Con 6 transacciones en bloques `[70, 10, 90, 30, 60, 20]` y cabezal en 0 direcci
 | FCFS | 70 → 10 → 90 → 30 → 60 → 20 | 340 unidades |
 | SCAN | 10 → 20 → 30 → 60 → 70 → 90 | 90 unidades |
 
-### Formato de cada entrada en el log
+### Formato de Cada Entrada en el Log
 
 ```
 [T000001] bloque=042 | DEPOSIT      | cuenta=ACC001 | monto=$   1000.00 | rol=CAJERO          | estado=COMPLETED
@@ -805,7 +805,7 @@ Con 6 transacciones en bloques `[70, 10, 90, 30, 60, 20]` y cabezal en 0 direcci
 
 El sistema implementa tres formas de manejo de interrupciones:
 
-### 12.1 Interrupción por timeout (timer interrupt simulado)
+### 12.1 Interrupción por Timeout (timer interrupt simulado)
 
 En `_worker_loop`, la llamada `_transaction_queue.get(timeout=1.0)` lanza `queue.Empty` si no hay transacciones disponibles en 1 segundo. El worker captura esta excepción y continúa el bucle, verificando si `_running` sigue siendo `True`. Esto simula un **timer interrupt** que periódicamente cede el control para comprobar el estado del sistema.
 
@@ -814,7 +814,7 @@ except queue.Empty:
     continue   # volver al inicio del bucle y re-verificar condición de parada
 ```
 
-### 12.2 Señal de cierre (sentinel interrupt)
+### 12.2 Señal de Cierre (sentinel interrupt)
 
 Cuando se llama a `motor.stop()`, el motor envía un valor centinela (`None`) a la cola por cada worker activo. Al recibir `None`, el worker reconoce la señal, llama a `task_done()` y rompe su bucle. Esto es análogo a una **interrupción de software** que ordena la terminación ordenada de un proceso.
 
@@ -824,7 +824,7 @@ if transaction is None:
     break
 ```
 
-### 12.3 Interrupciones de dominio (excepciones controladas)
+### 12.3 Interrupciones de Dominio (excepciones controladas)
 
 Las violaciones de RBAC (`PermissionError`) y los rechazos del Banquero interrumpen el flujo normal de ejecución de una transacción sin afectar al sistema en su conjunto. Cada tipo de interrupción de dominio produce una transición de estado específica (`DENIED` o `FAILED`) y registra la causa en `metadata`.
 
@@ -832,7 +832,7 @@ Las violaciones de RBAC (`PermissionError`) y los rechazos del Banquero interrum
 
 ## 13. Especificaciones Técnicas
 
-### Lenguaje y versión
+### Lenguaje y Versión
 
 Python 3.10 o superior.
 
